@@ -39,9 +39,39 @@ export default function App() {
   const [isFinished, setIsFinished] = useState(false);
   const [userName, setUserName] = useState('');
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [totalImages, setTotalImages] = useState(50);
+  const directoryInputRef = useRef<HTMLInputElement>(null);
   const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  const toggleTheaterMode = () => {
+    setIsTheaterMode(!isTheaterMode);
+  };
+
+  const handleSelectDirectory = () => {
+    if (directoryInputRef.current) {
+      directoryInputRef.current.click();
+    }
+  };
+
+  const handleDirectoryChange = (e: any) => {
+    const files = e.target.files as FileList | null;
+    if (files && files.length > 0) {
+      // Filter for image files
+      const imageFiles = Array.from(files).filter((file: File) => 
+        /\.(jpe?g|png|webp|tiff|bmp|svg)$/i.test(file.name)
+      );
+      
+      if (imageFiles.length > 0) {
+        setTotalImages(imageFiles.length);
+        // Hint the path from first file
+        const relativePath = files[0].webkitRelativePath;
+        const rootFolder = relativePath.split('/')[0];
+        setDatasetPath(`/${rootFolder}`);
+      }
+    }
+  };
 
   const toggleFullScreen = () => {
     if (!canvasRef.current) return;
@@ -143,45 +173,6 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  const handleSelectDirectory = async () => {
-    if (!('showDirectoryPicker' in window)) {
-      alert("Your browser doesn't support the File System Access API or it's being blocked by the environment (e.g. inside an iframe). Please type the path manually.");
-      return;
-    }
-
-    try {
-      // @ts-ignore
-      const directoryHandle = await window.showDirectoryPicker();
-      
-      // Attempt to count images in the directory
-      let imageCount = 0;
-      try {
-        // @ts-ignore
-        for await (const entry of directoryHandle.values()) {
-          if (entry.kind === 'file' && /\.(jpe?g|png|webp|tiff|bmp|svg)$/i.test(entry.name)) {
-            imageCount++;
-          }
-        }
-      } catch (err) {
-        console.warn("Could not iterate directory for count:", err);
-      }
-
-      if (imageCount > 0) {
-        setTotalImages(imageCount);
-      }
-
-      // We can't get the full absolute path due to browser security,
-      // but we can at least set the name as a hint.
-      setDatasetPath(`/${directoryHandle.name}`);
-    } catch (error) {
-      if ((error as Error).name === 'SecurityError') {
-        alert("Directory picker is blocked in this environment (likely due to iframe security policies). Please type the path manually.");
-      } else if ((error as Error).name !== 'AbortError') {
-        console.error(error);
-      }
-    }
-  };
-
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -214,6 +205,15 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden selection:bg-primary/10">
+      <input 
+        type="file" 
+        ref={directoryInputRef} 
+        onChange={handleDirectoryChange} 
+        // @ts-ignore
+        webkitdirectory="" 
+        directory="" 
+        className="hidden" 
+      />
       <div className="flex flex-1 overflow-hidden">
         {/* Main Workspace Canvas */}
         <main className="flex-1 flex flex-col relative overflow-hidden bg-background">
@@ -227,7 +227,7 @@ export default function App() {
                 className="flex-1 flex flex-col overflow-hidden"
               >
                 {/* Header Dashboard Area */}
-                <div className="px-margin-edge pt-8 flex items-end justify-between">
+                <div className={`px-margin-edge pt-8 flex items-end justify-between transition-all duration-500 ease-in-out ${isTheaterMode ? '-mt-24 opacity-0' : ''}`}>
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2 text-on-surface-variant mb-1 group">
                       <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
@@ -244,7 +244,7 @@ export default function App() {
                         <button 
                           onClick={handleSelectDirectory}
                           className="ml-2 px-2 py-0.5 rounded border border-outline-variant hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tighter cursor-pointer whitespace-nowrap"
-                          title="Open native folder picker (May be blocked in preview)"
+                          title="Browse directory (Cross-browser supported)"
                         >
                           BROWSE
                         </button>
@@ -290,10 +290,10 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex-1 p-margin-edge flex items-center justify-center">
+                <div className={`flex-1 flex items-center justify-center transition-all duration-500 ease-in-out ${isTheaterMode ? 'p-0' : 'p-margin-edge'}`}>
                   <div 
                     ref={canvasRef}
-                    className={`relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group ${isFullScreen ? 'rounded-none border-none' : ''}`}
+                    className={`relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group transition-all duration-500 ${isFullScreen || isTheaterMode ? 'rounded-none border-none' : ''}`}
                   >
                     <TransformWrapper
                       ref={transformComponentRef}
@@ -337,9 +337,9 @@ export default function App() {
                                 title="Reset View"
                               />
                               <CanvasControlButton 
-                                icon={<Maximize size={20} className={isFullScreen ? 'text-primary' : ''} />} 
-                                onClick={toggleFullScreen}
-                                title={isFullScreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                                icon={<Maximize size={20} className={isTheaterMode ? 'text-primary' : ''} />} 
+                                onClick={toggleTheaterMode}
+                                title={isTheaterMode ? "Exit Theater Mode" : "Expand Image View"}
                               />
                             </div>
                           </div>
@@ -425,8 +425,8 @@ export default function App() {
         </main>
 
         {/* Right Labeling Panel */}
-        <aside className="w-[360px] bg-white border-l border-outline-variant flex flex-col shrink-0 p-8 transition-opacity duration-300" 
-          style={{ opacity: isFinished ? 0.3 : 1, pointerEvents: isFinished ? 'none' : 'auto' }}
+        <aside className={`w-[360px] bg-white border-l border-outline-variant flex flex-col shrink-0 p-8 transition-all duration-500 ease-in-out ${isTheaterMode ? '-mr-[360px] opacity-0' : ''}`} 
+          style={{ opacity: isFinished ? 0.3 : (isTheaterMode ? 0 : 1), pointerEvents: isFinished || isTheaterMode ? 'none' : 'auto' }}
         >
           <div className="mb-8">
             <h3 className="text-lg font-bold tracking-tight text-on-surface">Categories</h3>
@@ -450,7 +450,7 @@ export default function App() {
 
             <div 
               ref={categoriesRef}
-              className="flex-1 space-y-4 overflow-y-auto pr-0 no-scrollbar"
+              className="flex-1 space-y-4 overflow-y-auto p-4 no-scrollbar"
             >
               {CATEGORIES.map((cat) => (
                 <button
