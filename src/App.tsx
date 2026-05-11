@@ -272,72 +272,73 @@ export default function App() {
                 className="flex-1 flex flex-col overflow-hidden"
               >
                 {/* Header Dashboard Area */}
-                <div className={`px-margin-edge pt-8 flex items-end justify-between transition-all duration-500 ease-in-out ${isTheaterMode ? '-mt-24 opacity-0' : ''}`}>
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2 text-on-surface-variant mb-1 group">
-                      <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
-                      <div className="flex items-center group/path">
-                        <span className="text-[10px] font-bold tracking-widest uppercase mr-1 opacity-50">Directory:</span>
-                        <input 
-                          type="text"
-                          value={datasetPath}
-                          onChange={(e) => setDatasetPath(e.target.value)}
-                          className="bg-transparent border-none p-0 text-[10px] font-bold tracking-widest uppercase focus:outline-none focus:text-primary transition-colors w-full min-w-[200px] hover:bg-outline-variant/10 px-1 rounded cursor-text"
-                          placeholder="ENTER DIRECTORY PATH MANUALLY..."
-                          title="Click to edit path manually (Browse restricted in preview)"
-                        />
-                        <button 
-                          onClick={handleSelectDirectory}
-                          className="ml-2 px-2 py-0.5 rounded border border-outline-variant hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tighter cursor-pointer whitespace-nowrap"
-                          title="Browse directory (Cross-browser supported)"
-                        >
-                          BROWSE
-                        </button>
-                      </div>
-                    </div>
-            {/* The image name has been removed to avoid bias */}
-                  </div>
-
-                  <div className="flex items-center gap-6">
-                    {/* Progress Counter */}
-                    <div className="flex flex-col items-end">
-                      <span className="text-[11px] font-black text-primary uppercase tracking-[0.2em] mb-1">
-                        {totalImages === 0 ? 0 : currentImage} / {totalImages} COMPLETE
-                      </span>
-                      <div className="w-48 h-1 bg-outline-variant/30 rounded-full overflow-hidden">
-                        <div className="h-full bg-primary transition-all duration-700 ease-out" style={{ width: `${totalImages === 0 ? 0 : Math.min(100, (currentImage / totalImages) * 100)}%` }} />
+                <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isTheaterMode ? 'max-h-0 opacity-0 mb-0' : 'max-h-[200px] mb-4'}`}>
+                  <div className="px-margin-edge pt-8 flex items-end justify-between">
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2 text-on-surface-variant mb-1 group">
+                        <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
+                        <div className="flex items-center group/path">
+                          <span className="text-[10px] font-bold tracking-widest uppercase mr-1 opacity-50">Directory:</span>
+                          <input 
+                            type="text"
+                            value={datasetPath}
+                            onChange={(e) => setDatasetPath(e.target.value)}
+                            className="bg-transparent border-none p-0 text-[10px] font-bold tracking-widest uppercase focus:outline-none focus:text-primary transition-colors w-full min-w-[200px] hover:bg-outline-variant/10 px-1 rounded cursor-text"
+                            placeholder="ENTER DIRECTORY PATH MANUALLY..."
+                            title="Click to edit path manually (Browse restricted in preview)"
+                          />
+                          <button 
+                            onClick={handleSelectDirectory}
+                            className="ml-2 px-2 py-0.5 rounded border border-outline-variant hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tighter cursor-pointer whitespace-nowrap"
+                            title="Browse directory (Cross-browser supported)"
+                          >
+                            BROWSE
+                          </button>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Status Indicators */}
-                    <div className="flex items-center gap-3 pl-6 border-l border-outline-variant/30">
-                      <AnimatePresence mode="wait">
-                        {isSaving ? (
-                          <motion.div 
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className="flex items-center gap-2 text-primary"
-                          >
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Syncing...</span>
-                          </motion.div>
-                        ) : lastSaved && (
-                          <motion.div 
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 0.5 }}
-                            className="flex items-center gap-2 text-on-surface-variant"
-                          >
-                            <Save size={12} />
-                            <span className="text-[10px] font-medium tracking-tight whitespace-nowrap">Last saved at {lastSaved}</span>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                    <div className="flex items-center gap-6">
+                      {/* Progress Counter */}
+                      <div className="flex flex-col items-end">
+                        <span className="text-[11px] font-black text-primary uppercase tracking-[0.2em] mb-1">
+                          {totalImages === 0 ? 0 : currentImage} / {totalImages} COMPLETE
+                        </span>
+                        <div className="w-48 h-1 bg-outline-variant/30 rounded-full overflow-hidden">
+                          <div className="h-full bg-primary transition-all duration-700 ease-out" style={{ width: `${totalImages === 0 ? 0 : Math.min(100, (currentImage / totalImages) * 100)}%` }} />
+                        </div>
+                      </div>
+
+                      {/* Status Indicators */}
+                      <div className="flex items-center gap-3 pl-6 border-l border-outline-variant/30">
+                        <AnimatePresence mode="wait">
+                          {isSaving ? (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -5 }}
+                              className="flex items-center gap-2 text-primary"
+                            >
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Syncing...</span>
+                            </motion.div>
+                          ) : lastSaved && (
+                            <motion.div 
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 0.5 }}
+                              className="flex items-center gap-2 text-on-surface-variant"
+                            >
+                              <Save size={12} />
+                              <span className="text-[10px] font-medium tracking-tight whitespace-nowrap">Last saved at {lastSaved}</span>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className={`flex-1 flex items-center justify-center transition-all duration-500 ease-in-out ${isTheaterMode ? 'p-0' : 'p-margin-edge'}`}>
+                <div className={`flex-1 min-h-0 flex items-center justify-center transition-all duration-500 ease-in-out ${isTheaterMode ? 'p-0' : 'p-margin-edge'}`}>
                   <div 
                     ref={canvasRef}
                     className={`relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group transition-all duration-500 ${isFullScreen || isTheaterMode ? 'rounded-none border-none' : ''}`}
@@ -414,7 +415,7 @@ export default function App() {
                 </div>
 
                 {/* Footer Navigation (Simplified) */}
-                <footer className="h-16 bg-white/30 backdrop-blur-sm border-t border-outline-variant px-margin-edge flex items-center justify-between shrink-0">
+                <footer className={`bg-white/30 backdrop-blur-sm border-t border-outline-variant px-margin-edge flex items-center justify-between shrink-0 transition-all duration-500 overflow-hidden ${isTheaterMode ? 'h-0 opacity-0 border-none' : 'h-16'}`}>
                   <div className="flex items-center gap-3">
                     <button 
                       onClick={() => setCurrentImage(prev => Math.max(1, prev - 1))}
@@ -489,10 +490,10 @@ export default function App() {
         </main>
 
         {/* Right Labeling Panel */}
-        <aside className={`w-[360px] bg-white border-l border-outline-variant flex flex-col shrink-0 p-8 transition-all duration-500 ease-in-out ${isTheaterMode ? '-mr-[360px] opacity-0' : ''}`} 
+        <aside className={`w-[480px] bg-white border-l border-outline-variant flex flex-col shrink-0 p-6 transition-all duration-500 ease-in-out ${isTheaterMode ? '-mr-[480px] opacity-0' : ''}`} 
           style={{ opacity: isFinished ? 0.3 : (isTheaterMode ? 0 : 1), pointerEvents: isFinished || isTheaterMode ? 'none' : 'auto' }}
         >
-          <div className="mb-8 flex justify-between items-start">
+          <div className="mb-6 flex justify-between items-start">
             <div>
               <h3 className="text-lg font-bold tracking-tight text-on-surface">Categories</h3>
               <p className="text-sm text-on-surface-variant mt-1 italic">Assign label to image</p>
@@ -525,21 +526,21 @@ export default function App() {
 
             <div 
               ref={categoriesRef}
-              className="flex-1 space-y-4 overflow-y-auto px-6 py-6 no-scrollbar"
+              className="flex-1 space-y-4 overflow-y-auto px-2 py-4 no-scrollbar"
             >
               {CATEGORIES.map((cat, index) => (
                 <button
                   key={cat.id}
                   onClick={() => toggleCategory(cat.id)}
-                  className={`w-full text-left p-5 rounded-[24px] border transition-all relative group flex justify-between items-center ${
+                  className={`w-[calc(100%-0.5rem)] mx-auto text-left py-7 px-6 rounded-[28px] border transition-all relative group flex justify-between items-center ${
                     selectedCategories.includes(cat.id) 
                       ? `${cat.bg} ${cat.border} shadow-xl scale-[1.02] ring-4 ${cat.ring}` 
                       : `bg-background border-transparent hover:bg-white hover:border-outline-variant/30 transition-all duration-300`
                   }`}
                   style={selectedCategories.includes(cat.id) ? { boxShadow: `0 20px 25px -5px ${cat.accent}20, 0 8px 10px -6px ${cat.accent}20` } : {}}
                 >
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2 mb-1">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2 mb-0.5">
                       <span className={`text-[10px] font-black w-4 h-4 rounded-md flex items-center justify-center transition-colors ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-outline-variant/10 text-on-surface-variant'}`}>
                         {index + 1}
                       </span>
@@ -547,7 +548,7 @@ export default function App() {
                         {cat.name}
                       </span>
                     </div>
-                    <span className={`text-sm font-medium transition-colors leading-tight ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
+                    <span className={`text-base font-medium transition-colors leading-tight ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
                       {cat.desc}
                     </span>
                   </div>
