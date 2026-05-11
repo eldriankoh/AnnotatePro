@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode, type UIEvent } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight,
@@ -15,33 +15,49 @@ import {
   CheckCircle2, 
   FolderOpen,
   Save,
-  RotateCcw
+  RotateCcw,
+  EyeOff,
+  Timer,
+  Tv,
+  Maximize2,
+  Presentation,
+  Monitor,
+  Map as MapIcon,
+  Swords,
+  Layout,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 
 const CATEGORIES = [
-  { id: 1, name: 'Projected Slides', desc: 'Visual presentation media', color: 'text-primary', border: 'border-primary', bg: 'bg-primary/5', ring: 'ring-primary/20', accent: '#0071E3' },
-  { id: 2, name: 'Computer Screen', desc: 'LCD/OLED active displays', color: 'text-purple-600', border: 'border-purple-600', bg: 'bg-purple-50', ring: 'ring-purple-100', accent: '#9333ea' },
-  { id: 3, name: 'Map', desc: 'Cartographic references', color: 'text-orange-600', border: 'border-orange-600', bg: 'bg-orange-50', ring: 'ring-orange-100', accent: '#ea580c' },
-  { id: 4, name: 'Wargaming', desc: 'Tactical sandbox models', color: 'text-emerald-600', border: 'border-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-100', accent: '#059669' },
-  { id: 5, name: 'Whiteboard', desc: 'Marker-based vertical surfaces', color: 'text-pink-500', border: 'border-pink-500', bg: 'bg-pink-50', ring: 'ring-pink-100', accent: '#ec4899' },
-  { id: 6, name: 'Printed Paper', desc: 'Hardcopy physical documents', color: 'text-amber-600', border: 'border-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-100', accent: '#d97706' },
+  { id: 1, name: 'Projected Slides', desc: 'Visual presentation media', color: 'text-primary', border: 'border-primary', bg: 'bg-primary/5', ring: 'ring-primary/20', accent: '#0071E3', icon: Presentation },
+  { id: 2, name: 'Computer Screen', desc: 'LCD/OLED active displays', color: 'text-purple-600', border: 'border-purple-600', bg: 'bg-purple-50', ring: 'ring-purple-100', accent: '#9333ea', icon: Monitor },
+  { id: 3, name: 'Map', desc: 'Cartographic references', color: 'text-orange-600', border: 'border-orange-600', bg: 'bg-orange-50', ring: 'ring-orange-100', accent: '#ea580c', icon: MapIcon },
+  { id: 4, name: 'Wargaming', desc: 'Tactical sandbox models', color: 'text-emerald-600', border: 'border-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-100', accent: '#059669', icon: Swords },
+  { id: 5, name: 'Whiteboard', desc: 'Marker-based vertical surfaces', color: 'text-pink-500', border: 'border-pink-500', bg: 'bg-pink-50', ring: 'ring-pink-100', accent: '#ec4899', icon: Layout },
+  { id: 6, name: 'Printed Paper', desc: 'Hardcopy physical documents', color: 'text-indigo-600', border: 'border-indigo-600', bg: 'bg-indigo-50', ring: 'ring-indigo-100', accent: '#4f46e5', icon: FileText },
 ];
 
 export default function App() {
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [annotations, setAnnotations] = useState<Record<number, number[]>>({});
-  const [datasetPath, setDatasetPath] = useState('/datasets/satellite_alpha_v4');
+  const [annotationMetrics, setAnnotationMetrics] = useState<Record<number, { start: string, end: string, duration: number }>>({});
+  const [accumulatedTimes, setAccumulatedTimes] = useState<Record<number, number>>({});
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [showTutorial, setShowTutorial] = useState(true);
+  const [datasetPath, setDatasetPath] = useState(() => localStorage.getItem('dataset_path') || 'Blip-C Empty');
   const [currentImage, setCurrentImage] = useState(1);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [userName, setUserName] = useState('');
+  const [isAtTutorialBottom, setIsAtTutorialBottom] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [totalImages, setTotalImages] = useState(0);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const prevImageRef = useRef(currentImage);
   const directoryInputRef = useRef<HTMLInputElement>(null);
   const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -72,8 +88,18 @@ export default function App() {
         // Hint the path from first file
         const relativePath = files[0].webkitRelativePath;
         const rootFolder = relativePath.split('/')[0];
-        setDatasetPath(`/${rootFolder}`);
+        const newPath = `/${rootFolder}`;
+        setDatasetPath(newPath);
+        localStorage.setItem('dataset_path', newPath);
       }
+    }
+  };
+
+  const handleTutorialScroll = (e: UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const isBottom = scrollHeight - scrollTop - clientHeight < 20;
+    if (isBottom !== isAtTutorialBottom) {
+      setIsAtTutorialBottom(isBottom);
     }
   };
 
@@ -137,16 +163,82 @@ export default function App() {
   }, [annotations]);
 
   const toggleCategory = (id: number) => {
+    if (isFinished) return;
+    
+    // Safety check: Don't allow selecting categories if timer is not running (unless in tutorial)
+    if (!sessionStartTime && !showTutorial) {
+      handleTimerToggle();
+    }
+
     setSelectedCategories(prev => 
       prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
     );
   };
+
+  const handleTimerToggle = () => {
+    if (sessionStartTime) {
+      // Pause
+      const elapsed = Date.now() - sessionStartTime;
+      setAccumulatedTimes(prev => ({
+        ...prev,
+        [currentImage]: (prev[currentImage] || 0) + elapsed
+      }));
+      setSessionStartTime(null);
+    } else {
+      // Start/Resume
+      setSessionStartTime(Date.now());
+    }
+  };
+
+  const recordMetrics = (index: number) => {
+    const currentAccumulated = accumulatedTimes[index] || 0;
+    const finalDuration = currentAccumulated + (sessionStartTime ? (Date.now() - sessionStartTime) : 0);
+    const durationSec = Math.round(finalDuration / 1000);
+    
+    const nowStr = new Date().toISOString();
+    setAnnotationMetrics(prev => ({
+      ...prev,
+      [index]: {
+        start: prev[index]?.start || nowStr,
+        end: nowStr,
+        duration: durationSec
+      }
+    }));
+
+    // Reset accumulated for this image
+    setAccumulatedTimes(prev => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+
+    if (sessionStartTime) {
+      setSessionStartTime(Date.now());
+    }
+  };
+
+  // Handle image changes: transfer elapsed time to previous image bucket and continue
+  useEffect(() => {
+    if (sessionStartTime) {
+      const elapsed = Date.now() - sessionStartTime;
+      const prevImg = prevImageRef.current;
+      setAccumulatedTimes(prev => ({
+        ...prev,
+        [prevImg]: (prev[prevImg] || 0) + elapsed
+      }));
+      // Continue session for NEW image immediately
+      setSessionStartTime(Date.now());
+    }
+    prevImageRef.current = currentImage;
+    setSelectedCategories(annotations[currentImage] || []);
+  }, [currentImage]);
 
   const handleApply = () => {
     if (selectedCategories.length === 0) return;
     
     // Store annotation
     setAnnotations(prev => ({ ...prev, [currentImage]: selectedCategories }));
+    recordMetrics(currentImage);
     
     if (currentImage < totalImages) {
       setCurrentImage(prev => prev + 1);
@@ -161,6 +253,7 @@ export default function App() {
   const handleNoLabel = () => {
     // Store -1 for No Label
     setAnnotations(prev => ({ ...prev, [currentImage]: [-1] }));
+    recordMetrics(currentImage);
     
     if (currentImage < totalImages) {
       setCurrentImage(prev => prev + 1);
@@ -185,7 +278,7 @@ export default function App() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
     const filename = `annotations_${safeName.toLowerCase().replace(/\s+/g, '_')}_${timestamp}.csv`;
     
-    let csvContent = 'ImageIndex,Filename,Labels\n';
+    let csvContent = 'ImageIndex,Filename,Labels,StartTime,EndTime,DurationSeconds\n';
     Object.entries(annotations).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([id, ids]) => {
       const index = Number(id);
       const file = imageFiles[index - 1];
@@ -194,7 +287,13 @@ export default function App() {
         if (lid === -1) return "No Label";
         return CATEGORIES.find(c => c.id === lid)?.name;
       }).join('; ');
-      csvContent += `${id},"${fileName}","${labels}"\n`;
+
+      const metrics = annotationMetrics[index];
+      const start = metrics?.start || '';
+      const end = metrics?.end || '';
+      const duration = metrics?.duration || 0;
+
+      csvContent += `${id},"${fileName}","${labels}","${start}","${end}",${duration}\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -225,7 +324,11 @@ export default function App() {
         setCurrentImage(prev => prev + 1);
       } else if (e.key === '0') {
         e.preventDefault();
+        if (!sessionStartTime) handleTimerToggle();
         handleNoLabel();
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        handleTimerToggle();
       } else {
         // Number keys 1-9 for categories
         const num = parseInt(e.key);
@@ -343,7 +446,36 @@ export default function App() {
                     ref={canvasRef}
                     className={`relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group transition-all duration-500 ${isFullScreen || isTheaterMode ? 'rounded-none border-none' : ''}`}
                   >
-                    <TransformWrapper
+                    {/* View Guard (Image Blocking) */}
+                    <AnimatePresence>
+                      {!sessionStartTime && !isFinished && totalImages > 0 && (
+                        <motion.div 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="absolute inset-0 z-20 backdrop-blur-3xl bg-surface/80 flex items-center justify-center p-12 text-center"
+                        >
+                          <div className="max-w-md">
+                            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6 text-primary animate-pulse">
+                              <EyeOff size={32} />
+                            </div>
+                            <h2 className="text-2xl font-black tracking-tight text-on-surface mb-3 uppercase">Timer Paused</h2>
+                            <p className="text-on-surface-variant text-sm mb-8 leading-relaxed">
+                              The image is hidden while the timer is not running to ensure accurate performance metrics.
+                            </p>
+                            <button 
+                              onClick={handleTimerToggle}
+                              className="px-8 py-4 bg-primary text-white rounded-full font-bold uppercase tracking-[0.2em] text-[11px] shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 transition-all active:translate-y-0"
+                            >
+                              START / RESUME SESSION
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div className={`relative w-full h-full p-1 flex items-center justify-center overflow-hidden transition-all duration-700 ${!sessionStartTime && totalImages > 0 ? 'scale-90 opacity-0 blur-xl' : 'scale-100 opacity-100 blur-0'}`}>
+                      <TransformWrapper
                       ref={transformComponentRef}
                       initialScale={1}
                       initialPositionX={0}
@@ -361,7 +493,8 @@ export default function App() {
                               <img 
                                 src={currentImageUrl} 
                                 alt="Workspace" 
-                                className="max-w-full max-h-full object-contain cursor-move"
+                                className="max-w-full max-h-full object-contain cursor-move pointer-events-none select-none"
+                                style={{ width: 'auto', height: 'auto', display: 'block' }}
                               />
                             ) : (
                               <div className="flex flex-col items-center gap-6 text-on-surface-variant/40 text-center px-12">
@@ -413,8 +546,9 @@ export default function App() {
                     </TransformWrapper>
                   </div>
                 </div>
+              </div>
 
-                {/* Footer Navigation (Simplified) */}
+              {/* Footer Navigation (Simplified) */}
                 <footer className={`bg-white/30 backdrop-blur-sm border-t border-outline-variant px-margin-edge flex items-center justify-between shrink-0 transition-all duration-500 overflow-hidden ${isTheaterMode ? 'h-0 opacity-0 border-none' : 'h-16'}`}>
                   <div className="flex items-center gap-3">
                     <button 
@@ -498,15 +632,25 @@ export default function App() {
               <h3 className="text-lg font-bold tracking-tight text-on-surface">Categories</h3>
               <p className="text-sm text-on-surface-variant mt-1 italic">Assign label to image</p>
             </div>
-            {Object.keys(annotations).length > 0 && (
+            <div className="flex gap-2">
               <button 
-                onClick={downloadCSV}
-                className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all border border-transparent hover:border-primary/20"
-                title="Download CSV of current progress"
+                onClick={handleTimerToggle}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${sessionStartTime ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
+                title={sessionStartTime ? "Pause Timer" : "Resume Timer"}
               >
-                <Save size={20} />
+                <div className={`w-1.5 h-1.5 rounded-full ${sessionStartTime ? 'bg-green-500 animate-pulse' : 'bg-orange-500'}`} />
+                {sessionStartTime ? 'Running' : 'Paused / Start'}
               </button>
-            )}
+              {Object.keys(annotations).length > 0 && (
+                <button 
+                  onClick={downloadCSV}
+                  className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all border border-transparent hover:border-primary/20"
+                  title="Download CSV of current progress"
+                >
+                  <Save size={20} />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 relative flex flex-col overflow-hidden">
@@ -616,6 +760,157 @@ export default function App() {
           </div>
         </aside>
       </div>
+      {/* Tutorial Overlay */}
+      <AnimatePresence>
+        {showTutorial && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-surface/90 backdrop-blur-xl flex items-center justify-center p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-white rounded-[40px] shadow-2xl border border-outline-variant max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+            >
+              <div 
+                className="flex-1 overflow-y-auto p-12 no-scrollbar"
+                onScroll={handleTutorialScroll}
+              >
+                <div className="w-16 h-1 bg-primary/20 rounded-full mx-auto mb-8" />
+                <h2 className="text-3xl font-black tracking-tight text-on-surface text-center mb-4 uppercase">Labeling Workspace</h2>
+                <p className="text-on-surface-variant text-center mb-10 max-w-md mx-auto">
+                  Welcome to your extraction workflow. Here are some quick tips to get you started efficiently.
+                </p>
+
+              <div className="grid grid-cols-2 gap-8 mb-6">
+                <div className="bg-background/50 p-6 rounded-3xl border border-outline-variant/30">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-4">Interactions</h4>
+                  <ul className="space-y-3">
+                    <li className="flex items-center gap-3 text-sm font-medium">
+                      <div className="w-6 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">1-6</div>
+                      Assign category
+                    </li>
+                    <li className="flex items-center gap-3 text-sm font-medium">
+                      <div className="w-6 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">0</div>
+                      No Label available
+                    </li>
+                    <li className="flex items-center gap-3 text-sm font-medium">
+                      <div className="w-12 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">Space</div>
+                      Pause / Resume Timer
+                    </li>
+                  </ul>
+                </div>
+                <div className="bg-background/50 p-6 rounded-3xl border border-outline-variant/30">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-4">Navigation</h4>
+                  <ul className="space-y-3">
+                    <li className="flex items-center gap-3 text-sm font-medium">
+                      <div className="w-12 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-xs shadow-sm">← / →</div>
+                      Previous / Next Image
+                    </li>
+                    <li className="flex items-center gap-3 text-sm font-medium">
+                      <div className="w-6 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">Z</div>
+                      Zoom Image
+                    </li>
+                    <li className="flex items-center gap-3 text-sm font-medium">
+                      <div className="w-6 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">T</div>
+                      Theater Mode
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="mb-10">
+                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-4 text-center">Practice Arena (Try Keys 1-6)</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  {CATEGORIES.map((cat, idx) => {
+                    const isSelected = selectedCategories.includes(cat.id);
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => toggleCategory(cat.id)}
+                        className={`group relative p-4 rounded-2xl border text-left transition-all ${
+                          isSelected 
+                            ? `${cat.bg} ${cat.border} ring-4 ${cat.ring} shadow-lg -translate-y-0.5` 
+                            : 'bg-white border-outline-variant hover:border-primary/50 text-on-surface'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-lg mb-3 flex items-center justify-center ${isSelected ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-primary/5 text-primary'}`}>
+                          <cat.icon size={16} />
+                        </div>
+                        <div className={`text-[10px] font-black uppercase tracking-wider mb-1 line-clamp-1 ${isSelected ? cat.color : 'text-on-surface'}`}>{cat.name}</div>
+                        <div className={`absolute top-2 right-2 text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border ${isSelected ? `${cat.border} ${cat.color}` : 'border-outline-variant text-on-surface-variant'}`}>
+                          {idx + 1}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-primary/5 p-6 rounded-[24px] mb-6 flex items-start gap-4">
+                <div className="p-2 bg-white rounded-xl shadow-sm text-primary">
+                  <FolderOpen size={20} />
+                </div>
+                <div className="flex-1">
+                  <h5 className="font-bold text-sm uppercase tracking-wider mb-1">Dataset Source</h5>
+                  <p className="text-xs text-on-surface-variant leading-relaxed mb-4">
+                    Current path: <code className="bg-primary/10 px-1 rounded">{datasetPath}</code>
+                  </p>
+                  <button 
+                    onClick={() => directoryInputRef.current?.click()}
+                    className="px-4 py-2 bg-white border border-outline-variant rounded-xl text-[10px] font-black uppercase tracking-tighter hover:bg-surface transition-all flex items-center gap-2"
+                  >
+                    <FolderOpen size={14} />
+                    Change Directory
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-primary/5 p-6 rounded-[24px] mb-10 flex items-start gap-4">
+                <div className="p-2 bg-white rounded-xl shadow-sm text-primary">
+                  <Timer size={20} />
+                </div>
+                <div>
+                  <h5 className="font-bold text-sm uppercase tracking-wider mb-1">Time Tracking Enabled</h5>
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    Image visibility is synced with the timer. Start the timer to view and extract labels.
+                  </p>
+                </div>
+              </div>
+
+                <button 
+                  onClick={() => setShowTutorial(false)}
+                  className="w-full py-5 bg-primary text-white rounded-full font-bold uppercase tracking-[0.2em] text-[11px] shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 transition-all active:translate-y-0 disabled:opacity-50 disabled:translate-y-0"
+                  disabled={imageFiles.length === 0}
+                >
+                  {imageFiles.length > 0 ? "GOT IT, LET'S BEGIN" : "PLEASE SELECT A DIRECTORY"}
+                </button>
+              </div>
+
+              {/* Scroll Indicator */}
+              <AnimatePresence>
+                {!isAtTutorialBottom && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 0 }}
+                    animate={{ opacity: 0.3, y: [0, 8, 0] }}
+                    exit={{ opacity: 0 }}
+                    transition={{ 
+                      opacity: { duration: 0.3 },
+                      y: { duration: 1.5, repeat: Infinity }
+                    }}
+                    className="absolute bottom-10 left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-1"
+                  >
+                    <span className="text-[8px] font-black uppercase tracking-widest">Scroll</span>
+                    <ChevronDown size={16} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
