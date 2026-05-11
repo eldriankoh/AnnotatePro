@@ -158,6 +158,20 @@ export default function App() {
     triggerSave();
   };
 
+  const handleNoLabel = () => {
+    // Store -1 for No Label
+    setAnnotations(prev => ({ ...prev, [currentImage]: [-1] }));
+    
+    if (currentImage < totalImages) {
+      setCurrentImage(prev => prev + 1);
+      setSelectedCategories([]);
+    } else {
+      setIsFinished(true);
+    }
+    
+    triggerSave();
+  };
+
   const triggerSave = () => {
     setIsSaving(true);
     setTimeout(() => {
@@ -176,7 +190,10 @@ export default function App() {
       const index = Number(id);
       const file = imageFiles[index - 1];
       const fileName = file ? file.name : `image_${id}`;
-      const labels = (ids as number[]).map(lid => CATEGORIES.find(c => c.id === lid)?.name).join('; ');
+      const labels = (ids as number[]).map(lid => {
+        if (lid === -1) return "No Label";
+        return CATEGORIES.find(c => c.id === lid)?.name;
+      }).join('; ');
       csvContent += `${id},"${fileName}","${labels}"\n`;
     });
 
@@ -206,6 +223,9 @@ export default function App() {
         setCurrentImage(prev => prev - 1);
       } else if (e.key === 'ArrowRight' && currentImage < totalImages) {
         setCurrentImage(prev => prev + 1);
+      } else if (e.key === '0') {
+        e.preventDefault();
+        handleNoLabel();
       } else {
         // Number keys 1-9 for categories
         const num = parseInt(e.key);
@@ -574,15 +594,24 @@ export default function App() {
               </div>
             </div>
             
-            <button 
-              onClick={handleApply}
-              className={`w-full py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] transition-all ${
-              selectedCategories.length > 0 
-                ? 'bg-primary text-white shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 active:translate-y-0.5' 
-                : 'bg-outline-variant/30 text-outline cursor-not-allowed'
-            }`}>
-              Apply Extraction
-            </button>
+            <div className="flex gap-3">
+              <button 
+                onClick={handleNoLabel}
+                className="flex-1 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-500 transition-all active:scale-95 whitespace-nowrap"
+              >
+                No Label
+              </button>
+              <button 
+                onClick={handleApply}
+                className={`flex-[2] py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] transition-all ${
+                  selectedCategories.length > 0 
+                    ? 'bg-primary text-white shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 active:translate-y-0.5' 
+                    : 'bg-outline-variant/30 text-outline cursor-not-allowed'
+                }`}
+              >
+                Apply Extraction
+              </button>
+            </div>
           </div>
         </aside>
       </div>
