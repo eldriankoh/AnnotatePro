@@ -6,7 +6,9 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { 
   ChevronLeft, 
-  ChevronRight, 
+  ChevronRight,
+  ChevronUp,
+  ChevronDown, 
   ZoomIn, 
   ZoomOut, 
   Maximize, 
@@ -37,7 +39,7 @@ export default function App() {
   const [isFinished, setIsFinished] = useState(false);
   const [userName, setUserName] = useState('');
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const totalImages = 50;
+  const [totalImages, setTotalImages] = useState(50);
   const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -58,6 +60,36 @@ export default function App() {
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
+
+  const categoriesRef = useRef<HTMLDivElement>(null);
+  const [showScrollUp, setShowScrollUp] = useState(false);
+  const [showScrollDown, setShowScrollDown] = useState(false);
+
+  const handleCategoriesScroll = () => {
+    if (!categoriesRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = categoriesRef.current;
+    setShowScrollUp(scrollTop > 10);
+    setShowScrollDown(scrollTop + clientHeight < scrollHeight - 10);
+  };
+
+  useEffect(() => {
+    handleCategoriesScroll();
+    const categoriesElement = categoriesRef.current;
+    if (categoriesElement) {
+      categoriesElement.addEventListener('scroll', handleCategoriesScroll);
+      // Re-check on window resize in case list height changes
+      window.addEventListener('resize', handleCategoriesScroll);
+    }
+    return () => {
+      categoriesElement?.removeEventListener('scroll', handleCategoriesScroll);
+      window.removeEventListener('resize', handleCategoriesScroll);
+    };
+  }, []);
+
+  // Update scroll indicators whenever annotations or other state might change list size
+  useEffect(() => {
+    handleCategoriesScroll();
+  }, [annotations]);
 
   const toggleCategory = (id: number) => {
     setSelectedCategories(prev => 
@@ -120,6 +152,24 @@ export default function App() {
     try {
       // @ts-ignore
       const directoryHandle = await window.showDirectoryPicker();
+      
+      // Attempt to count images in the directory
+      let imageCount = 0;
+      try {
+        // @ts-ignore
+        for await (const entry of directoryHandle.values()) {
+          if (entry.kind === 'file' && /\.(jpe?g|png|webp|tiff|bmp|svg)$/i.test(entry.name)) {
+            imageCount++;
+          }
+        }
+      } catch (err) {
+        console.warn("Could not iterate directory for count:", err);
+      }
+
+      if (imageCount > 0) {
+        setTotalImages(imageCount);
+      }
+
       // We can't get the full absolute path due to browser security,
       // but we can at least set the name as a hint.
       setDatasetPath(`/${directoryHandle.name}`);
@@ -131,6 +181,28 @@ export default function App() {
       }
     }
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleApply();
+      } else if (e.key === 'ArrowLeft' && currentImage > 1) {
+        setCurrentImage(prev => prev - 1);
+      } else if (e.key === 'ArrowRight' && currentImage < totalImages) {
+        setCurrentImage(prev => prev + 1);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedCategories, currentImage, totalImages, annotations]);
 
   // Auto-save logic every 30 seconds
   useEffect(() => {
@@ -159,18 +231,20 @@ export default function App() {
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2 text-on-surface-variant mb-1 group">
                       <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
-                      <div className="flex items-center">
+                      <div className="flex items-center group/path">
                         <span className="text-[10px] font-bold tracking-widest uppercase mr-1 opacity-50">Directory:</span>
                         <input 
                           type="text"
                           value={datasetPath}
                           onChange={(e) => setDatasetPath(e.target.value)}
-                          className="bg-transparent border-none p-0 text-[10px] font-bold tracking-widest uppercase focus:outline-none focus:text-primary transition-colors w-full min-w-[200px]"
-                          placeholder="ENTER DIRECTORY PATH..."
+                          className="bg-transparent border-none p-0 text-[10px] font-bold tracking-widest uppercase focus:outline-none focus:text-primary transition-colors w-full min-w-[200px] hover:bg-outline-variant/10 px-1 rounded cursor-text"
+                          placeholder="ENTER DIRECTORY PATH MANUALLY..."
+                          title="Click to edit path manually (Browse restricted in preview)"
                         />
                         <button 
                           onClick={handleSelectDirectory}
-                          className="ml-2 px-2 py-0.5 rounded border border-outline-variant hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tighter cursor-pointer"
+                          className="ml-2 px-2 py-0.5 rounded border border-outline-variant hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tighter cursor-pointer whitespace-nowrap"
+                          title="Open native folder picker (May be blocked in preview)"
                         >
                           BROWSE
                         </button>
@@ -184,7 +258,7 @@ export default function App() {
                     <div className="flex flex-col items-end">
                       <span className="text-[11px] font-black text-primary uppercase tracking-[0.2em] mb-1">{currentImage} / {totalImages} COMPLETE</span>
                       <div className="w-48 h-1 bg-outline-variant/30 rounded-full overflow-hidden">
-                        <div className="h-full bg-primary transition-all duration-700 ease-out" style={{ width: `${(currentImage / totalImages) * 100}%` }} />
+                        <div className="h-full bg-primary transition-all duration-700 ease-out" style={{ width: `${Math.min(100, (currentImage / totalImages) * 100)}%` }} />
                       </div>
                     </div>
 
@@ -359,34 +433,67 @@ export default function App() {
             <p className="text-sm text-on-surface-variant mt-1 italic">Assign label to image</p>
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => toggleCategory(cat.id)}
-                className={`w-full text-left p-5 rounded-[24px] border transition-all relative group flex justify-between items-center ${
-                  selectedCategories.includes(cat.id) 
-                    ? `bg-white border-primary shadow-xl shadow-primary/10 scale-[1.02] ring-4 ring-primary/5` 
-                    : `bg-background border-transparent hover:bg-white hover:border-outline-variant/30 transition-all duration-300`
-                }`}
-              >
-                <div className="flex flex-col">
-                  <span className={`text-[11px] font-bold uppercase tracking-widest mb-1 ${selectedCategories.includes(cat.id) ? 'text-primary' : 'text-on-surface-variant'}`}>
-                    {cat.name}
-                  </span>
-                  <span className={`text-sm font-medium transition-colors leading-tight ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
-                    {cat.desc}
-                  </span>
-                </div>
-                {selectedCategories.includes(cat.id) && (
-                  <motion.div 
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(0,113,227,0.4)]"
-                  />
-                )}
-              </button>
-            ))}
+          <div className="flex-1 relative flex flex-col overflow-hidden">
+            {/* Scroll Up Indicator */}
+            <AnimatePresence>
+              {showScrollUp && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  className="absolute top-0 left-0 right-0 z-10 flex justify-center py-2 bg-gradient-to-b from-white via-white/80 to-transparent pointer-events-none"
+                >
+                  <ChevronUp size={16} className="text-primary animate-bounce" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div 
+              ref={categoriesRef}
+              className="flex-1 space-y-4 overflow-y-auto pr-0 no-scrollbar"
+            >
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => toggleCategory(cat.id)}
+                  className={`w-full text-left p-5 rounded-[24px] border transition-all relative group flex justify-between items-center ${
+                    selectedCategories.includes(cat.id) 
+                      ? `bg-white border-primary shadow-xl shadow-primary/10 scale-[1.02] ring-4 ring-primary/5` 
+                      : `bg-background border-transparent hover:bg-white hover:border-outline-variant/30 transition-all duration-300`
+                  }`}
+                >
+                  <div className="flex flex-col">
+                    <span className={`text-[11px] font-bold uppercase tracking-widest mb-1 ${selectedCategories.includes(cat.id) ? 'text-primary' : 'text-on-surface-variant'}`}>
+                      {cat.name}
+                    </span>
+                    <span className={`text-sm font-medium transition-colors leading-tight ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
+                      {cat.desc}
+                    </span>
+                  </div>
+                  {selectedCategories.includes(cat.id) && (
+                    <motion.div 
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(0,113,227,0.4)]"
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Scroll Down Indicator */}
+            <AnimatePresence>
+              {showScrollDown && (
+                <motion.div
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 5 }}
+                  className="absolute bottom-0 left-0 right-0 z-10 flex justify-center py-2 bg-gradient-to-t from-white via-white/80 to-transparent pointer-events-none"
+                >
+                  <ChevronDown size={16} className="text-primary animate-bounce" />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <div className="mt-8 pt-8 border-t border-outline-variant space-y-6">
