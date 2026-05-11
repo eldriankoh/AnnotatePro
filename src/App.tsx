@@ -329,6 +329,15 @@ export default function App() {
       } else if (e.key === ' ') {
         e.preventDefault();
         handleTimerToggle();
+      } else if (e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        toggleTheaterMode();
+      } else if (e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        transformComponentRef.current?.zoomIn(0.5);
+      } else if (e.key.toLowerCase() === 'x') {
+        e.preventDefault();
+        transformComponentRef.current?.zoomOut(0.5);
       } else {
         // Number keys 1-9 for categories
         const num = parseInt(e.key);
@@ -341,7 +350,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCategories, currentImage, totalImages, annotations]);
+  }, [selectedCategories, currentImage, totalImages, annotations, sessionStartTime]);
 
   // Auto-save logic every 30 seconds
   useEffect(() => {
@@ -883,9 +892,9 @@ export default function App() {
                 <button 
                   onClick={() => setShowTutorial(false)}
                   className="w-full py-5 bg-primary text-white rounded-full font-bold uppercase tracking-[0.2em] text-[11px] shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 transition-all active:translate-y-0 disabled:opacity-50 disabled:translate-y-0"
-                  disabled={imageFiles.length === 0}
+                  disabled={imageFiles.length === 0 && datasetPath === 'Blip-C Empty'}
                 >
-                  {imageFiles.length > 0 ? "GOT IT, LET'S BEGIN" : "PLEASE SELECT A DIRECTORY"}
+                  {(imageFiles.length > 0 || datasetPath !== 'Blip-C Empty') ? "GOT IT, LET'S BEGIN" : "PLEASE SELECT A DIRECTORY"}
                 </button>
               </div>
 
