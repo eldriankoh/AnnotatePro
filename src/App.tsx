@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -36,8 +36,28 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [userName, setUserName] = useState('');
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const totalImages = 50;
   const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  const toggleFullScreen = () => {
+    if (!canvasRef.current) return;
+    
+    if (!document.fullscreenElement) {
+      canvasRef.current.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  useEffect(() => {
+    const handleFsChange = () => setIsFullScreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
 
   const toggleCategory = (id: number) => {
     setSelectedCategories(prev => 
@@ -76,7 +96,7 @@ export default function App() {
     
     let csvContent = 'ImageID,Labels\n';
     Object.entries(annotations).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([id, ids]) => {
-      const labels = ids.map(lid => CATEGORIES.find(c => c.id === lid)?.name).join('; ');
+      const labels = (ids as number[]).map(lid => CATEGORIES.find(c => c.id === lid)?.name).join('; ');
       csvContent += `${id},"${labels}"\n`;
     });
 
@@ -92,14 +112,21 @@ export default function App() {
   };
 
   const handleSelectDirectory = async () => {
+    if (!('showDirectoryPicker' in window)) {
+      alert("Your browser doesn't support the File System Access API or it's being blocked by the environment (e.g. inside an iframe). Please type the path manually.");
+      return;
+    }
+
     try {
-      if ('showDirectoryPicker' in window) {
-        // @ts-ignore
-        const directoryHandle = await window.showDirectoryPicker();
-        setDatasetPath(directoryHandle.name);
-      }
+      // @ts-ignore
+      const directoryHandle = await window.showDirectoryPicker();
+      // We can't get the full absolute path due to browser security,
+      // but we can at least set the name as a hint.
+      setDatasetPath(`/${directoryHandle.name}`);
     } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
+      if ((error as Error).name === 'SecurityError') {
+        alert("Directory picker is blocked in this environment (likely due to iframe security policies). Please type the path manually.");
+      } else if ((error as Error).name !== 'AbortError') {
         console.error(error);
       }
     }
@@ -190,7 +217,10 @@ export default function App() {
                 </div>
 
                 <div className="flex-1 p-margin-edge flex items-center justify-center">
-                  <div className="relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group">
+                  <div 
+                    ref={canvasRef}
+                    className={`relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group ${isFullScreen ? 'rounded-none border-none' : ''}`}
+                  >
                     <TransformWrapper
                       ref={transformComponentRef}
                       initialScale={1}
@@ -232,7 +262,11 @@ export default function App() {
                                 onClick={() => resetTransform()}
                                 title="Reset View"
                               />
-                              <CanvasControlButton icon={<Maximize size={20} />} />
+                              <CanvasControlButton 
+                                icon={<Maximize size={20} className={isFullScreen ? 'text-primary' : ''} />} 
+                                onClick={toggleFullScreen}
+                                title={isFullScreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                              />
                             </div>
                           </div>
                         </>
@@ -387,7 +421,7 @@ export default function App() {
   );
 }
 
-function CanvasControlButton({ icon, onClick, title }: { icon: React.ReactNode, onClick?: () => void, title?: string }) {
+function CanvasControlButton({ icon, onClick, title }: { icon: ReactNode, onClick?: () => void, title?: string }) {
   return (
     <button 
       onClick={onClick}
