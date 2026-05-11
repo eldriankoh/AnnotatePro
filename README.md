@@ -1,20 +1,32 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Annotate Studio - Extraction Node Interface
 
-# Run and deploy your AI Studio app
+A professional-grade satellite imagery and document annotation workspace built for high-throughput labeling tasks.
 
-This contains everything you need to run your app locally.
+## Key Features
 
-View your app in AI Studio: https://ai.studio/apps/f96fdce4-affb-4a10-b1a0-e11ec14e817d
+- **Intuitive Multi-Label Canvas**: Specialized high-contrast workspace for visual data extraction.
+- **Precision Zoom & Pan**: Powered by `react-zoom-pan-pinch` for detailed inspection of high-resolution assets.
+- **Workflow Automation**:
+  - **Auto-Save**: Integrated background persistence every 30 seconds.
+  - **Progress Tracking**: Real-time visualization of throughput and completion status.
+  - **Quick Apply**: Fast-path keyboard navigation (Enter key simulation) for high-speed labeling.
+- **Reliable Data Export**:
+  - Unique-timestamped CSV generation (prevents file name collisions).
+  - Categorized annotation logs including annotator identity.
+- **Design Excellence**:
+  - Clean, minimal "Studio" aesthetic following Apple-inspired design principles.
+  - Responsive, distraction-free interface.
 
-## Run Locally
+## Tech Stack
 
-**Prerequisites:**  Node.js
+- **React 18** + **Vite**
+- **Tailwind CSS 4** for modular styling.
+- **Framer Motion** for state-driven transitions and feedback.
+- **Lucide React** for consistent iconography.
 
+## Documentation of Changes
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- **Interface Optimization**: Removed the Icon Rail sidebar for increased canvas real estate.
+- **Bias Mitigation**: Sanitized node titles to prevent annotator bias during extraction sessions.
+- **Export Enhancement**: Implemented unique file naming logic using user-provided identity and ISO-safe timestamps.
+- **Interaction Refinement**: Added subtle visual feedback and highlighted state for multi-label selection.

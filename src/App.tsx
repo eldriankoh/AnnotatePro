@@ -3,29 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
-  Bell, 
-  Settings, 
   ChevronLeft, 
   ChevronRight, 
   ZoomIn, 
   ZoomOut, 
   Maximize, 
-  Database, 
-  Monitor, 
-  Map as MapIcon, 
-  Sword, 
-  Presentation, 
-  Layout, 
-  FileText,
-  HelpCircle,
-  History,
-  CheckCircle2,
+  CheckCircle2, 
   FolderOpen,
-  Save
+  Save,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 
 const CATEGORIES = [
   { id: 1, name: 'Projected Slides', desc: 'Visual presentation media', color: 'text-primary border-primary', bg: 'bg-[#F5F5F7]', ring: 'ring-primary/10' },
@@ -45,6 +36,7 @@ export default function App() {
   const [isFinished, setIsFinished] = useState(false);
   const [userName, setUserName] = useState('');
   const totalImages = 50;
+  const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
 
   const toggleCategory = (id: number) => {
     setSelectedCategories(prev => 
@@ -109,26 +101,6 @@ export default function App() {
   return (
     <div className="flex h-screen bg-background overflow-hidden selection:bg-primary/10">
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar - Icon Rail */}
-        <aside className="w-sidebar bg-white border-r border-outline-variant flex flex-col items-center py-8 gap-8 shrink-0">
-          <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
-            <Layout size={22} className="text-white" />
-          </div>
-          
-          <nav className="flex flex-col items-center gap-6 opacity-40">
-            <SidebarRailItem icon={<Presentation size={24} />} />
-            <SidebarRailItem icon={<Monitor size={24} />} active />
-            <SidebarRailItem icon={<MapIcon size={24} />} />
-            <SidebarRailItem icon={<Sword size={24} />} />
-            <SidebarRailItem icon={<FileText size={24} />} />
-          </nav>
-
-          <div className="mt-auto flex flex-col items-center gap-6 opacity-40">
-            <SidebarRailItem icon={<HelpCircle size={24} />} />
-            <SidebarRailItem icon={<History size={24} />} />
-          </div>
-        </aside>
-
         {/* Main Workspace Canvas */}
         <main className="flex-1 flex flex-col relative overflow-hidden bg-background">
           <AnimatePresence mode="wait">
@@ -147,7 +119,7 @@ export default function App() {
                       <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
                       <span className="text-[10px] font-bold tracking-widest uppercase">Directory: /datasets/satellite_alpha_v4</span>
                     </div>
-                    <h1 className="text-2xl font-bold tracking-tight text-on-surface">Extraction Node {currentImage.toString().padStart(2, '0')}</h1>
+            {/* The image name has been removed to avoid bias */}
                   </div>
 
                   <div className="flex items-center gap-6">
@@ -189,22 +161,53 @@ export default function App() {
 
                 <div className="flex-1 p-margin-edge flex items-center justify-center">
                   <div className="relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group">
-                    <img 
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuCq4dwfjkAVwjVo6EMRO8LNGWa9PmjxUiyp6sVD2kRAiM_LcVaDWUhTCgeUENJe8HNGW1EW04OQ90M5TaNZlAOEqxapmbHXaudjN5-1-n8rOUxfCNIbK7ZwXNNSsVFVodHWI16QOZ61QpkPDHwWdTQIyCmvl2koxyPb92ibESX9VFjJxTFIBBN13w5Iy35dGiUpsjFhMyAUdhFEf9aFnV078Fx0D78Tlc9WC4kK_rekskcyv-gIGQyI6nmnvrNFJxsT4cdkTtzL55M" 
-                      alt="Workspace" 
-                      className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-                    
-                    {/* Canvas Controls Overlay */}
-                    <div className="absolute top-8 right-8 flex gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
-                      <div className="bg-white/90 backdrop-blur-md border border-outline-variant rounded-2xl p-2 flex gap-1 shadow-xl">
-                        <CanvasControlButton icon={<ZoomIn size={20} />} />
-                        <CanvasControlButton icon={<ZoomOut size={20} />} />
-                        <div className="w-px bg-outline-variant mx-1 self-stretch" />
-                        <CanvasControlButton icon={<Maximize size={20} />} />
-                      </div>
-                    </div>
+                    <TransformWrapper
+                      ref={transformComponentRef}
+                      initialScale={1}
+                      initialPositionX={0}
+                      initialPositionY={0}
+                      centerOnInit
+                      key={currentImage} // Reset zoom/pan when image changes
+                    >
+                      {({ zoomIn, zoomOut, resetTransform }) => (
+                        <>
+                          <TransformComponent
+                            wrapperClassName="!w-full !h-full"
+                            contentClassName="!w-full !h-full flex items-center justify-center"
+                          >
+                            <img 
+                              src="https://lh3.googleusercontent.com/aida-public/AB6AXuCq4dwfjkAVwjVo6EMRO8LNGWa9PmjxUiyp6sVD2kRAiM_LcVaDWUhTCgeUENJe8HNGW1EW04OQ90M5TaNZlAOEqxapmbHXaudjN5-1-n8rOUxfCNIbK7ZwXNNSsVFVodHWI16QOZ61QpkPDHwWdTQIyCmvl2koxyPb92ibESX9VFjJxTFIBBN13w5Iy35dGiUpsjFhMyAUdhFEf9aFnV078Fx0D78Tlc9WC4kK_rekskcyv-gIGQyI6nmnvrNFJxsT4cdkTtzL55M" 
+                              alt="Workspace" 
+                              className="max-w-full max-h-full object-contain cursor-move"
+                              referrerPolicy="no-referrer"
+                            />
+                          </TransformComponent>
+                          
+                          {/* Canvas Controls Overlay */}
+                          <div className="absolute top-8 right-8 flex gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 z-10">
+                            <div className="bg-white/90 backdrop-blur-md border border-outline-variant rounded-2xl p-2 flex gap-1 shadow-xl">
+                              <CanvasControlButton 
+                                icon={<ZoomIn size={20} />} 
+                                onClick={() => zoomIn(0.2)}
+                                title="Zoom In"
+                              />
+                              <CanvasControlButton 
+                                icon={<ZoomOut size={20} />} 
+                                onClick={() => zoomOut(0.2)}
+                                title="Zoom Out"
+                              />
+                              <div className="w-px bg-outline-variant mx-1 self-stretch" />
+                              <CanvasControlButton 
+                                icon={<RotateCcw size={20} />} 
+                                onClick={() => resetTransform()}
+                                title="Reset View"
+                              />
+                              <CanvasControlButton icon={<Maximize size={20} />} />
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </TransformWrapper>
                   </div>
                 </div>
 
@@ -289,7 +292,7 @@ export default function App() {
         >
           <div className="mb-8">
             <h3 className="text-lg font-bold tracking-tight text-on-surface">Categories</h3>
-            <p className="text-sm text-on-surface-variant mt-1 italic">Assign label to active region</p>
+            <p className="text-sm text-on-surface-variant mt-1 italic">Assign label to image</p>
           </div>
 
           <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
@@ -297,22 +300,26 @@ export default function App() {
               <button
                 key={cat.id}
                 onClick={() => toggleCategory(cat.id)}
-                className={`w-full text-left p-5 rounded-[24px] border border-transparent transition-all relative group flex justify-between items-center ${
+                className={`w-full text-left p-5 rounded-[24px] border transition-all relative group flex justify-between items-center ${
                   selectedCategories.includes(cat.id) 
-                    ? `bg-white border-outline shadow-xl shadow-gray-200/50 scale-[1.02] ring-4 ring-primary/5` 
-                    : `bg-background hover:bg-white hover:border-outline-variant/50 transition-all duration-300`
+                    ? `bg-white border-primary shadow-xl shadow-primary/10 scale-[1.02] ring-4 ring-primary/5` 
+                    : `bg-background border-transparent hover:bg-white hover:border-outline-variant/30 transition-all duration-300`
                 }`}
               >
                 <div className="flex flex-col">
                   <span className={`text-[11px] font-bold uppercase tracking-widest mb-1 ${selectedCategories.includes(cat.id) ? 'text-primary' : 'text-on-surface-variant'}`}>
                     {cat.name}
                   </span>
-                  <span className="text-sm font-medium text-on-surface/60 group-hover:text-on-surface transition-colors leading-tight">
+                  <span className={`text-sm font-medium transition-colors leading-tight ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
                     {cat.desc}
                   </span>
                 </div>
                 {selectedCategories.includes(cat.id) && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  <motion.div 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(0,113,227,0.4)]"
+                  />
                 )}
               </button>
             ))}
@@ -350,17 +357,13 @@ export default function App() {
   );
 }
 
-function SidebarRailItem({ icon, active = false }: { icon: React.ReactNode, active?: boolean }) {
+function CanvasControlButton({ icon, onClick, title }: { icon: React.ReactNode, onClick?: () => void, title?: string }) {
   return (
-    <div className={`cursor-pointer transition-all hover:scale-110 active:scale-95 ${active ? 'text-primary opacity-100' : 'text-on-surface-variant hover:text-on-surface'}`}>
-      {icon}
-    </div>
-  );
-}
-
-function CanvasControlButton({ icon }: { icon: React.ReactNode }) {
-  return (
-    <button className="p-2 text-on-surface-variant hover:bg-surface-container hover:text-primary transition-all rounded active:scale-90">
+    <button 
+      onClick={onClick}
+      title={title}
+      className="p-2 text-on-surface-variant hover:bg-surface-container hover:text-primary transition-all rounded active:scale-90"
+    >
       {icon}
     </button>
   );
