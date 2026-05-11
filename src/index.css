@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Clean Minimalism Colors (Apple-inspired) */
+  --color-primary: #0071E3;
+  --color-on-primary: #ffffff;
+  
+  --color-background: #F5F5F7;
+  --color-surface: #ffffff;
+  --color-surface-container-low: #F5F5F7;
+  --color-surface-container: #ffffff;
+  
+  --color-on-surface: #1D1D1F;
+  --color-on-surface-variant: #8E8E93;
+
+  --color-outline: #E5E5E7;
+  --color-outline-variant: #E5E5E7;
+
+  /* Spacing - Matching Design */
+  --spacing-toolbar: 80px; 
+  --spacing-sidebar: 72px;  
+  --spacing-margin-edge: 32px;
+  --spacing-gutter: 24px;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface font-sans;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
