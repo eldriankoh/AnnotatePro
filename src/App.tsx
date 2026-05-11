@@ -21,12 +21,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 
 const CATEGORIES = [
-  { id: 1, name: 'Projected Slides', desc: 'Visual presentation media', color: 'text-primary border-primary', bg: 'bg-[#F5F5F7]', ring: 'ring-primary/10' },
-  { id: 2, name: 'Computer Screen', desc: 'LCD/OLED active displays', color: 'text-[#1D1D1F] border-[#E5E5E7]', bg: 'bg-[#F5F5F7]', ring: 'ring-outline-variant/30' },
-  { id: 3, name: 'Map', desc: 'Cartographic references', color: 'text-orange-500 border-orange-200', bg: 'bg-orange-50', ring: 'ring-orange-100' },
-  { id: 4, name: 'Wargaming', desc: 'Tactical sandbox models', color: 'text-gray-600 border-gray-200', bg: 'bg-gray-50', ring: 'ring-gray-100' },
-  { id: 5, name: 'Whiteboard', desc: 'Marker-based vertical surfaces', color: 'text-blue-400 border-blue-100', bg: 'bg-blue-50', ring: 'ring-blue-100' },
-  { id: 6, name: 'Printed Paper', desc: 'Hardcopy physical documents', color: 'text-gray-400 border-gray-100', bg: 'bg-gray-50', ring: 'ring-gray-100' },
+  { id: 1, name: 'Projected Slides', desc: 'Visual presentation media', color: 'text-primary', border: 'border-primary', bg: 'bg-primary/5', ring: 'ring-primary/20', accent: '#0071E3' },
+  { id: 2, name: 'Computer Screen', desc: 'LCD/OLED active displays', color: 'text-purple-600', border: 'border-purple-600', bg: 'bg-purple-50', ring: 'ring-purple-100', accent: '#9333ea' },
+  { id: 3, name: 'Map', desc: 'Cartographic references', color: 'text-orange-600', border: 'border-orange-600', bg: 'bg-orange-50', ring: 'ring-orange-100', accent: '#ea580c' },
+  { id: 4, name: 'Wargaming', desc: 'Tactical sandbox models', color: 'text-emerald-600', border: 'border-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-100', accent: '#059669' },
+  { id: 5, name: 'Whiteboard', desc: 'Marker-based vertical surfaces', color: 'text-pink-500', border: 'border-pink-500', bg: 'bg-pink-50', ring: 'ring-pink-100', accent: '#ec4899' },
+  { id: 6, name: 'Printed Paper', desc: 'Hardcopy physical documents', color: 'text-amber-600', border: 'border-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-100', accent: '#d97706' },
 ];
 
 export default function App() {
@@ -40,7 +40,8 @@ export default function App() {
   const [userName, setUserName] = useState('');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isTheaterMode, setIsTheaterMode] = useState(false);
-  const [totalImages, setTotalImages] = useState(50);
+  const [totalImages, setTotalImages] = useState(0);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const directoryInputRef = useRef<HTMLInputElement>(null);
   const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -59,12 +60,15 @@ export default function App() {
     const files = e.target.files as FileList | null;
     if (files && files.length > 0) {
       // Filter for image files
-      const imageFiles = Array.from(files).filter((file: File) => 
+      const newImageFiles = Array.from(files).filter((file: File) => 
         /\.(jpe?g|png|webp|tiff|bmp|svg)$/i.test(file.name)
       );
       
-      if (imageFiles.length > 0) {
-        setTotalImages(imageFiles.length);
+      if (newImageFiles.length > 0) {
+        setImageFiles(newImageFiles);
+        setTotalImages(newImageFiles.length);
+        setCurrentImage(1);
+        setSelectedCategories([]);
         // Hint the path from first file
         const relativePath = files[0].webkitRelativePath;
         const rootFolder = relativePath.split('/')[0];
@@ -72,6 +76,17 @@ export default function App() {
       }
     }
   };
+
+  const currentImageUrl = (imageFiles.length > 0 && currentImage <= imageFiles.length) 
+    ? URL.createObjectURL(imageFiles[currentImage - 1]) 
+    : null;
+
+  // Cleanup object URLs to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
+    };
+  }, [currentImageUrl]);
 
   const toggleFullScreen = () => {
     if (!canvasRef.current) return;
@@ -156,10 +171,13 @@ export default function App() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
     const filename = `annotations_${safeName.toLowerCase().replace(/\s+/g, '_')}_${timestamp}.csv`;
     
-    let csvContent = 'ImageID,Labels\n';
+    let csvContent = 'ImageIndex,Filename,Labels\n';
     Object.entries(annotations).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([id, ids]) => {
+      const index = Number(id);
+      const file = imageFiles[index - 1];
+      const fileName = file ? file.name : `image_${id}`;
       const labels = (ids as number[]).map(lid => CATEGORIES.find(c => c.id === lid)?.name).join('; ');
-      csvContent += `${id},"${labels}"\n`;
+      csvContent += `${id},"${fileName}","${labels}"\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -188,6 +206,13 @@ export default function App() {
         setCurrentImage(prev => prev - 1);
       } else if (e.key === 'ArrowRight' && currentImage < totalImages) {
         setCurrentImage(prev => prev + 1);
+      } else {
+        // Number keys 1-9 for categories
+        const num = parseInt(e.key);
+        if (!isNaN(num) && num > 0 && num <= CATEGORIES.length) {
+          const category = CATEGORIES[num - 1];
+          toggleCategory(category.id);
+        }
       }
     };
 
@@ -256,9 +281,11 @@ export default function App() {
                   <div className="flex items-center gap-6">
                     {/* Progress Counter */}
                     <div className="flex flex-col items-end">
-                      <span className="text-[11px] font-black text-primary uppercase tracking-[0.2em] mb-1">{currentImage} / {totalImages} COMPLETE</span>
+                      <span className="text-[11px] font-black text-primary uppercase tracking-[0.2em] mb-1">
+                        {totalImages === 0 ? 0 : currentImage} / {totalImages} COMPLETE
+                      </span>
                       <div className="w-48 h-1 bg-outline-variant/30 rounded-full overflow-hidden">
-                        <div className="h-full bg-primary transition-all duration-700 ease-out" style={{ width: `${Math.min(100, (currentImage / totalImages) * 100)}%` }} />
+                        <div className="h-full bg-primary transition-all duration-700 ease-out" style={{ width: `${totalImages === 0 ? 0 : Math.min(100, (currentImage / totalImages) * 100)}%` }} />
                       </div>
                     </div>
 
@@ -305,16 +332,33 @@ export default function App() {
                     >
                       {({ zoomIn, zoomOut, resetTransform }) => (
                         <>
-                          <TransformComponent
+                          < TransformComponent
                             wrapperClassName="!w-full !h-full"
                             contentClassName="!w-full !h-full flex items-center justify-center"
                           >
-                            <img 
-                              src="https://lh3.googleusercontent.com/aida-public/AB6AXuCq4dwfjkAVwjVo6EMRO8LNGWa9PmjxUiyp6sVD2kRAiM_LcVaDWUhTCgeUENJe8HNGW1EW04OQ90M5TaNZlAOEqxapmbHXaudjN5-1-n8rOUxfCNIbK7ZwXNNSsVFVodHWI16QOZ61QpkPDHwWdTQIyCmvl2koxyPb92ibESX9VFjJxTFIBBN13w5Iy35dGiUpsjFhMyAUdhFEf9aFnV078Fx0D78Tlc9WC4kK_rekskcyv-gIGQyI6nmnvrNFJxsT4cdkTtzL55M" 
-                              alt="Workspace" 
-                              className="max-w-full max-h-full object-contain cursor-move"
-                              referrerPolicy="no-referrer"
-                            />
+                            {currentImageUrl ? (
+                              <img 
+                                src={currentImageUrl} 
+                                alt="Workspace" 
+                                className="max-w-full max-h-full object-contain cursor-move"
+                              />
+                            ) : (
+                              <div className="flex flex-col items-center gap-6 text-on-surface-variant/40 text-center px-12">
+                                <div className="w-24 h-24 rounded-full bg-outline-variant/5 flex items-center justify-center">
+                                  <FolderOpen size={48} className="opacity-20 animate-pulse" />
+                                </div>
+                                <div className="space-y-2">
+                                  <h3 className="text-xl font-bold tracking-tight text-on-surface/60">Waiting for Dataset</h3>
+                                  <p className="text-sm font-medium">Please browse to image directory for labelling</p>
+                                </div>
+                                <button 
+                                  onClick={handleSelectDirectory}
+                                  className="px-8 py-3 bg-primary/5 border border-primary/20 text-primary text-xs font-black uppercase tracking-widest rounded-full hover:bg-primary/10 transition-all active:scale-95"
+                                >
+                                  Select Images Folder
+                                </button>
+                              </div>
+                            )}
                           </TransformComponent>
                           
                           {/* Canvas Controls Overlay */}
@@ -428,9 +472,20 @@ export default function App() {
         <aside className={`w-[360px] bg-white border-l border-outline-variant flex flex-col shrink-0 p-8 transition-all duration-500 ease-in-out ${isTheaterMode ? '-mr-[360px] opacity-0' : ''}`} 
           style={{ opacity: isFinished ? 0.3 : (isTheaterMode ? 0 : 1), pointerEvents: isFinished || isTheaterMode ? 'none' : 'auto' }}
         >
-          <div className="mb-8">
-            <h3 className="text-lg font-bold tracking-tight text-on-surface">Categories</h3>
-            <p className="text-sm text-on-surface-variant mt-1 italic">Assign label to image</p>
+          <div className="mb-8 flex justify-between items-start">
+            <div>
+              <h3 className="text-lg font-bold tracking-tight text-on-surface">Categories</h3>
+              <p className="text-sm text-on-surface-variant mt-1 italic">Assign label to image</p>
+            </div>
+            {Object.keys(annotations).length > 0 && (
+              <button 
+                onClick={downloadCSV}
+                className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all border border-transparent hover:border-primary/20"
+                title="Download CSV of current progress"
+              >
+                <Save size={20} />
+              </button>
+            )}
           </div>
 
           <div className="flex-1 relative flex flex-col overflow-hidden">
@@ -450,22 +505,28 @@ export default function App() {
 
             <div 
               ref={categoriesRef}
-              className="flex-1 space-y-4 overflow-y-auto p-4 no-scrollbar"
+              className="flex-1 space-y-4 overflow-y-auto px-6 py-6 no-scrollbar"
             >
-              {CATEGORIES.map((cat) => (
+              {CATEGORIES.map((cat, index) => (
                 <button
                   key={cat.id}
                   onClick={() => toggleCategory(cat.id)}
                   className={`w-full text-left p-5 rounded-[24px] border transition-all relative group flex justify-between items-center ${
                     selectedCategories.includes(cat.id) 
-                      ? `bg-white border-primary shadow-xl shadow-primary/10 scale-[1.02] ring-4 ring-primary/5` 
+                      ? `${cat.bg} ${cat.border} shadow-xl scale-[1.02] ring-4 ${cat.ring}` 
                       : `bg-background border-transparent hover:bg-white hover:border-outline-variant/30 transition-all duration-300`
                   }`}
+                  style={selectedCategories.includes(cat.id) ? { boxShadow: `0 20px 25px -5px ${cat.accent}20, 0 8px 10px -6px ${cat.accent}20` } : {}}
                 >
                   <div className="flex flex-col">
-                    <span className={`text-[11px] font-bold uppercase tracking-widest mb-1 ${selectedCategories.includes(cat.id) ? 'text-primary' : 'text-on-surface-variant'}`}>
-                      {cat.name}
-                    </span>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-[10px] font-black w-4 h-4 rounded-md flex items-center justify-center transition-colors ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-outline-variant/10 text-on-surface-variant'}`}>
+                        {index + 1}
+                      </span>
+                      <span className={`text-[11px] font-bold uppercase tracking-widest ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
+                        {cat.name}
+                      </span>
+                    </div>
                     <span className={`text-sm font-medium transition-colors leading-tight ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
                       {cat.desc}
                     </span>
@@ -474,7 +535,8 @@ export default function App() {
                     <motion.div 
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
-                      className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(0,113,227,0.4)]"
+                      className="w-2 h-2 rounded-full shadow-lg"
+                      style={{ backgroundColor: cat.accent, boxShadow: `0 0 8px ${cat.accent}80` }}
                     />
                   )}
                 </button>
