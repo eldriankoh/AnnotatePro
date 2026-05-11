@@ -24,6 +24,31 @@ A professional-grade satellite imagery and document annotation workspace built f
 - **Framer Motion** for state-driven transitions and feedback.
 - **Lucide React** for consistent iconography.
 
+## Installation & Setup
+
+To run this application locally, follow these steps:
+
+### Prerequisites
+- **Node.js**: Ensure you have Node.js installed (LTS version recommended).
+- **npm**: Generally comes bundled with Node.js.
+
+### Steps
+
+1. **Install Dependencies**:
+   Open your terminal in the project root and run:
+   ```bash
+   npm install
+   ```
+
+2. **Run Development Server**:
+   Start the local dev server:
+   ```bash
+   npm run dev
+   ```
+
+3. **Access the App**:
+   The application will be available at `http://localhost:3000` (or the port specified in your console).
+
 ## Documentation of Changes
 
 - **Interface Optimization**: Removed the Icon Rail sidebar for increased canvas real estate.
