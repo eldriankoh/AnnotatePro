@@ -7,6 +7,7 @@ A professional-grade satellite imagery and document annotation workspace built f
 - **Intuitive Multi-Label Canvas**: Specialized high-contrast workspace for visual data extraction.
 - **Precision Zoom & Pan**: Powered by `react-zoom-pan-pinch` for detailed inspection of high-resolution assets.
 - **Workflow Automation**:
+  - **Editable Project Context**: Dynamically update dataset directory paths to maintain metadata accuracy.
   - **Auto-Save**: Integrated background persistence every 30 seconds.
   - **Progress Tracking**: Real-time visualization of throughput and completion status.
   - **Quick Apply**: Fast-path keyboard navigation (Enter key simulation) for high-speed labeling.

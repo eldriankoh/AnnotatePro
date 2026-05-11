@@ -30,6 +30,7 @@ const CATEGORIES = [
 export default function App() {
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [annotations, setAnnotations] = useState<Record<number, number[]>>({});
+  const [datasetPath, setDatasetPath] = useState('/datasets/satellite_alpha_v4');
   const [currentImage, setCurrentImage] = useState(1);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -90,6 +91,20 @@ export default function App() {
     document.body.removeChild(link);
   };
 
+  const handleSelectDirectory = async () => {
+    try {
+      if ('showDirectoryPicker' in window) {
+        // @ts-ignore
+        const directoryHandle = await window.showDirectoryPicker();
+        setDatasetPath(directoryHandle.name);
+      }
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        console.error(error);
+      }
+    }
+  };
+
   // Auto-save logic every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
@@ -115,9 +130,24 @@ export default function App() {
                 {/* Header Dashboard Area */}
                 <div className="px-margin-edge pt-8 flex items-end justify-between">
                   <div className="flex flex-col">
-                    <div className="flex items-center gap-2 text-on-surface-variant mb-1 group cursor-default">
+                    <div className="flex items-center gap-2 text-on-surface-variant mb-1 group">
                       <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
-                      <span className="text-[10px] font-bold tracking-widest uppercase">Directory: /datasets/satellite_alpha_v4</span>
+                      <div className="flex items-center">
+                        <span className="text-[10px] font-bold tracking-widest uppercase mr-1 opacity-50">Directory:</span>
+                        <input 
+                          type="text"
+                          value={datasetPath}
+                          onChange={(e) => setDatasetPath(e.target.value)}
+                          className="bg-transparent border-none p-0 text-[10px] font-bold tracking-widest uppercase focus:outline-none focus:text-primary transition-colors w-full min-w-[200px]"
+                          placeholder="ENTER DIRECTORY PATH..."
+                        />
+                        <button 
+                          onClick={handleSelectDirectory}
+                          className="ml-2 px-2 py-0.5 rounded border border-outline-variant hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tighter cursor-pointer"
+                        >
+                          BROWSE
+                        </button>
+                      </div>
                     </div>
             {/* The image name has been removed to avoid bias */}
                   </div>
