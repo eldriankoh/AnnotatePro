@@ -170,9 +170,15 @@ export default function App() {
       handleTimerToggle();
     }
 
-    setSelectedCategories(prev => 
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-    );
+    setSelectedCategories(prev => {
+      // If we had "No Label" (-1), remove it when selecting a real category
+      const withoutNoLabel = prev.filter(c => c !== -1);
+      if (withoutNoLabel.includes(id)) {
+        return withoutNoLabel.filter(c => c !== id);
+      } else {
+        return [...withoutNoLabel, id];
+      }
+    });
   };
 
   const handleTimerToggle = () => {
@@ -318,8 +324,12 @@ export default function App() {
       if (e.key === 'Enter') {
         e.preventDefault();
         handleApply();
-      } else if (e.key === 'ArrowLeft' && currentImage > 1) {
-        setCurrentImage(prev => prev - 1);
+      } else if ((e.key === 'z' && (e.ctrlKey || e.metaKey)) || (e.key === 'ArrowLeft' && currentImage > 1)) {
+        // Undo / Back
+        e.preventDefault();
+        if (currentImage > 1) {
+          setCurrentImage(prev => prev - 1);
+        }
       } else if (e.key === 'ArrowRight' && currentImage < totalImages) {
         setCurrentImage(prev => prev + 1);
       } else if (e.key === '0') {
@@ -748,16 +758,26 @@ export default function App() {
               </div>
             </div>
             
-            <div className="flex gap-3">
-              <button 
-                onClick={handleNoLabel}
-                className="flex-1 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-500 transition-all active:scale-95 whitespace-nowrap"
-              >
-                No Label
-              </button>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => currentImage > 1 && setCurrentImage(prev => prev - 1)}
+                  disabled={currentImage <= 1}
+                  className="px-4 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] border border-outline-variant text-on-surface-variant hover:bg-background transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
+                  title="Go back to previous image (Ctrl+Z)"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button 
+                  onClick={handleNoLabel}
+                  className="flex-1 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-500 transition-all active:scale-95 whitespace-nowrap"
+                >
+                  No Label
+                </button>
+              </div>
               <button 
                 onClick={handleApply}
-                className={`flex-[2] py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] transition-all ${
+                className={`w-full py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] transition-all ${
                   selectedCategories.length > 0 
                     ? 'bg-primary text-white shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 active:translate-y-0.5' 
                     : 'bg-outline-variant/30 text-outline cursor-not-allowed'
@@ -819,8 +839,12 @@ export default function App() {
                       Previous / Next Image
                     </li>
                     <li className="flex items-center gap-3 text-sm font-medium">
-                      <div className="w-6 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">Z</div>
-                      Zoom Image
+                      <div className="w-16 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[9px] shadow-sm tracking-tighter">Ctrl + Z</div>
+                      Undo / Back
+                    </li>
+                    <li className="flex items-center gap-3 text-sm font-medium">
+                      <div className="w-6 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">Z / X</div>
+                      Zoom In / Out
                     </li>
                     <li className="flex items-center gap-3 text-sm font-medium">
                       <div className="w-6 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">T</div>
