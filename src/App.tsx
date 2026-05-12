@@ -69,6 +69,49 @@ export default function App() {
   const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
+  const [isAutoLoading, setIsAutoLoading] = useState(false);
+
+  const attemptAutoLoad = async () => {
+    if (imageFiles.length > 0) return;
+    setIsAutoLoading(true);
+    try {
+      // Look for a manifest.json in the public/dataset folder
+      const response = await fetch('/dataset/manifest.json');
+      if (response.ok) {
+        const manifest = await response.json();
+        if (manifest.images && Array.isArray(manifest.images)) {
+          const fetchedFiles = await Promise.all(
+            manifest.images.map(async (imgName: string) => {
+              const imgRes = await fetch(`/dataset/${imgName}`);
+              const blob = await imgRes.blob();
+              return new File([blob], imgName, { type: blob.type });
+            })
+          );
+          
+          if (fetchedFiles.length > 0) {
+            setImageFiles(fetchedFiles);
+            setTotalImages(fetchedFiles.length);
+            setCurrentImage(1);
+            setDatasetPath('/public/dataset');
+            localStorage.setItem('dataset_path', '/public/dataset');
+          }
+        }
+      }
+    } catch (err) {
+      console.log("Auto-load manifest not found or failed. This is expected if not configured.");
+    } finally {
+      setIsAutoLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Only attempt auto-load on mount if running on localhost or similar dev environments
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal && imageFiles.length === 0) {
+      attemptAutoLoad();
+    }
+  }, []);
+
   const [groundTruth, setGroundTruth] = useState<any[] | null>(null);
   const [metricsResults, setMetricsResults] = useState<any>(null);
   const [importedAnnotations, setImportedAnnotations] = useState<Record<string, Record<number, number[]>>>({});
@@ -247,26 +290,64 @@ export default function App() {
     setIsTheaterMode(prev => !prev);
   };
 
-  const handleSelectDirectory = () => {
-    if (directoryInputRef.current) {
+  const handleSelectDirectory = async () => {
+    // Attempt modern File System Access API first for better experience
+    if ('showDirectoryPicker' in window) {
+      try {
+        const handle = await (window as any).showDirectoryPicker();
+        const files: File[] = [];
+        
+        // Recursively or flatly get files? Let's do flat for now as it's safer for performance
+        for await (const entry of handle.values()) {
+          if (entry.kind === 'file') {
+            const file = await entry.getFile();
+            if (/\.(jpe?g|png|webp|tiff|bmp|svg)$/i.test(file.name)) {
+              files.push(file);
+            }
+          }
+        }
+
+        if (files.length > 0) {
+          // Sort files naturally by name
+          files.sort((a, b) => (a as File).name.localeCompare((b as File).name, undefined, { numeric: true, sensitivity: 'base' }));
+          
+          setImageFiles(files);
+          setTotalImages(files.length);
+          setCurrentImage(1);
+          setSelectedCategories([]);
+          
+          const newPath = `/${handle.name}`;
+          setDatasetPath(newPath);
+          localStorage.setItem('dataset_path', newPath);
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error("Directory picker error:", err);
+          // Fallback to legacy
+          directoryInputRef.current?.click();
+        }
+      }
+    } else if (directoryInputRef.current) {
       directoryInputRef.current.click();
     }
   };
 
-  const handleDirectoryChange = (e: any) => {
-    const files = e.target.files as FileList | null;
+  const handleDirectoryChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
     if (files && files.length > 0) {
-      // Filter for image files
       const newImageFiles = Array.from(files).filter((file: File) => 
         /\.(jpe?g|png|webp|tiff|bmp|svg)$/i.test(file.name)
       );
       
       if (newImageFiles.length > 0) {
+        // Sort files naturally by name
+        newImageFiles.sort((a, b) => (a as File).name.localeCompare((b as File).name, undefined, { numeric: true, sensitivity: 'base' }));
+        
         setImageFiles(newImageFiles);
         setTotalImages(newImageFiles.length);
         setCurrentImage(1);
         setSelectedCategories([]);
-        // Hint the path from first file
+        
         const relativePath = files[0].webkitRelativePath;
         const rootFolder = relativePath.split('/')[0];
         const newPath = `/${rootFolder}`;
@@ -736,14 +817,15 @@ export default function App() {
                           <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
                           <div className="flex items-center group/path">
                             <span className="text-[10px] font-black tracking-widest uppercase mr-2 opacity-50">Dataset Path:</span>
-                            <span className="text-[10px] font-black tracking-widest uppercase text-on-surface truncate max-w-[240px]">
+                            <span className={`text-[10px] font-black tracking-widest uppercase truncate max-w-[240px] ${imageFiles.length === 0 && datasetPath !== 'Blip-C Empty' ? 'text-orange-500' : 'text-on-surface'}`}>
                               {datasetPath || 'NOT SELECTED'}
+                              {imageFiles.length === 0 && datasetPath && datasetPath !== 'Blip-C Empty' && ' (RECONNECT NEEDED)'}
                             </span>
                             <button 
                               onClick={handleSelectDirectory}
                               className="ml-4 px-3 py-1 rounded-full border border-outline-variant/50 hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tight"
                             >
-                              CHANGE BROWSE
+                              {imageFiles.length === 0 && datasetPath && datasetPath !== 'Blip-C Empty' ? 'RECONNECT SOURCE' : 'CHANGE BROWSE'}
                             </button>
                           </div>
                         </div>
@@ -846,15 +928,27 @@ export default function App() {
                                   <FolderOpen size={48} className="opacity-20 animate-pulse" />
                                 </div>
                                 <div className="space-y-2">
-                                  <h3 className="text-xl font-bold tracking-tight text-on-surface/60">Waiting for Dataset</h3>
-                                  <p className="text-sm font-medium">Please browse to image directory for labelling</p>
+                                  <h3 className="text-xl font-bold tracking-tight text-on-surface/60">
+                                    {datasetPath && datasetPath !== 'Blip-C Empty' ? 'Session Disconnected' : 'Waiting for Dataset'}
+                                  </h3>
+                                  <p className="text-sm font-medium max-w-xs mx-auto">
+                                    {datasetPath && datasetPath !== 'Blip-C Empty' 
+                                      ? `Browser security requires you to re-select "${datasetPath}" after a refresh.` 
+                                      : 'Please browse to image directory for labelling'}
+                                  </p>
                                 </div>
                                 <button 
                                   onClick={handleSelectDirectory}
-                                  className="px-8 py-3 bg-primary/5 border border-primary/20 text-primary text-xs font-black uppercase tracking-widest rounded-full hover:bg-primary/10 transition-all active:scale-95"
+                                  className="px-8 py-3 bg-primary text-white text-xs font-black uppercase tracking-widest rounded-full hover:shadow-xl hover:shadow-primary/20 transition-all active:scale-95 flex items-center gap-2"
                                 >
-                                  Select Images Folder
+                                  {isAutoLoading ? <RotateCcw size={14} className="animate-spin" /> : <FolderOpen size={14} />}
+                                  {datasetPath && datasetPath !== 'Blip-C Empty' ? 'Reconnect Directory' : 'Select Images Folder'}
                                 </button>
+                                {window.location.hostname === 'localhost' && !datasetPath && (
+                                  <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest">
+                                    Tip: Place images in <code className="bg-outline-variant/10 px-1">public/dataset</code> for auto-load
+                                  </p>
+                                )}
                               </div>
                             )}
                           </TransformComponent>
