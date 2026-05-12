@@ -497,6 +497,8 @@ export default function App() {
   };
 
   const handleTimerToggle = () => {
+    if (imageFiles.length === 0) return;
+    
     if (sessionStartTime) {
       // Pause
       const elapsed = Date.now() - sessionStartTime;
@@ -742,7 +744,7 @@ export default function App() {
                 exit={{ opacity: 0, x: -20 }}
                 className="flex-1 overflow-y-auto p-12"
               >
-                <div className="max-w-4xl mx-auto space-y-10">
+                <div className="max-w-6xl mx-auto space-y-10">
                   <div className="flex items-center justify-between">
                     <button 
                       onClick={() => setActiveView('labeling')}
@@ -1139,9 +1141,10 @@ export default function App() {
         </main>
 
         {/* Right Labeling Panel */}
-        <aside className={`w-[480px] bg-white border-l border-outline-variant flex flex-col shrink-0 p-6 transition-all duration-500 ease-in-out ${isTheaterMode ? '-mr-[480px] opacity-0' : ''}`} 
-          style={{ opacity: isFinished ? 0.3 : (isTheaterMode ? 0 : 1), pointerEvents: isFinished || isTheaterMode ? 'none' : 'auto' }}
-        >
+        {activeView === 'labeling' && (
+          <aside className={`w-[480px] bg-white border-l border-outline-variant flex flex-col shrink-0 p-6 transition-all duration-500 ease-in-out ${isTheaterMode ? '-mr-[480px] opacity-0' : ''}`} 
+            style={{ opacity: isFinished ? 0.3 : (isTheaterMode ? 0 : 1), pointerEvents: isFinished || isTheaterMode ? 'none' : 'auto' }}
+          >
           <div className="mb-6 flex justify-between items-start">
             <div>
               <h3 className="text-lg font-bold tracking-tight text-on-surface">Categories</h3>
@@ -1165,11 +1168,18 @@ export default function App() {
 
               <button 
                 onClick={handleTimerToggle}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${sessionStartTime ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
-                title={sessionStartTime ? "Pause Timer" : "Resume Timer"}
+                disabled={imageFiles.length === 0}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${
+                  imageFiles.length === 0 
+                    ? 'bg-outline-variant/10 text-outline border-transparent cursor-not-allowed' 
+                    : sessionStartTime 
+                      ? 'bg-green-50 text-green-600 border-green-200' 
+                      : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'
+                }`}
+                title={imageFiles.length === 0 ? "Connect dataset to start timer" : sessionStartTime ? "Pause Timer" : "Resume Timer"}
               >
-                <div className={`w-1.5 h-1.5 rounded-full ${sessionStartTime ? 'bg-green-500 animate-pulse' : 'bg-orange-500'}`} />
-                {sessionStartTime ? 'Running' : 'Paused / Start'}
+                <div className={`w-1.5 h-1.5 rounded-full ${imageFiles.length === 0 ? 'bg-outline-variant' : sessionStartTime ? 'bg-green-500 animate-pulse' : 'bg-orange-500'}`} />
+                {sessionStartTime ? 'Running' : (imageFiles.length === 0 ? 'Disconnected' : 'Paused / Start')}
               </button>
               {Object.keys(annotations).length > 0 && (
                 <div className="flex gap-1">
@@ -1320,6 +1330,7 @@ export default function App() {
             </div>
           </div>
         </aside>
+        )}
       </div>
       {/* Tutorial Overlay */}
       <AnimatePresence>
