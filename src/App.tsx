@@ -157,6 +157,7 @@ export default function App() {
       setAnnotations({});
       setAnnotationMetrics({});
       setAccumulatedTimes({});
+      setSessionStartTime(null);
       setCurrentImage(1);
       setSelectedCategories([]);
       setIsFinished(false);
@@ -1148,6 +1149,21 @@ export default function App() {
             </div>
             <div className="flex gap-2">
               <button 
+                onClick={() => {
+                  if (sessionStartTime) {
+                    // Just pause the session, don't fully commit to recordMetrics yet 
+                    // handleTimerToggle will do the accumulation
+                    handleTimerToggle();
+                  }
+                  setShowTutorial(true);
+                }}
+                className="p-2 text-on-surface-variant hover:bg-surface-variant/5 hover:text-primary rounded-xl transition-all border border-transparent"
+                title="Show Tutorial"
+              >
+                <Info size={20} />
+              </button>
+
+              <button 
                 onClick={handleTimerToggle}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${sessionStartTime ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
                 title={sessionStartTime ? "Pause Timer" : "Resume Timer"}
@@ -1157,13 +1173,6 @@ export default function App() {
               </button>
               {Object.keys(annotations).length > 0 && (
                 <div className="flex gap-1">
-                  <button 
-                    onClick={() => setShowTutorial(true)}
-                    className="p-2 text-on-surface-variant hover:bg-surface-variant/5 hover:text-primary rounded-xl transition-all border border-transparent"
-                    title="Show Tutorial"
-                  >
-                    <Info size={20} />
-                  </button>
                   <button 
                     onClick={downloadCSV}
                     className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all border border-transparent hover:border-primary/20"
