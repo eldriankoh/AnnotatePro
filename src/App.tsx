@@ -38,10 +38,10 @@ import Papa from 'papaparse';
 const CATEGORIES = [
   { id: 1, key: 'projected_slides', name: 'Projected Slides', desc: 'Visual presentation media', color: 'text-primary', border: 'border-primary', bg: 'bg-primary/5', ring: 'ring-primary/20', accent: '#0071E3', icon: Presentation },
   { id: 2, key: 'computer_screen', name: 'Computer Screen', desc: 'LCD/OLED active displays', color: 'text-purple-600', border: 'border-purple-600', bg: 'bg-purple-50', ring: 'ring-purple-100', accent: '#9333ea', icon: Monitor },
+  { id: 6, key: 'printed_papers', name: 'Printed Paper', desc: 'Hardcopy physical documents', color: 'text-indigo-600', border: 'border-indigo-600', bg: 'bg-indigo-50', ring: 'ring-indigo-100', accent: '#4f46e5', icon: FileText },
+  { id: 5, key: 'whiteboard', name: 'Whiteboard', desc: 'Marker-based vertical surfaces', color: 'text-pink-500', border: 'border-pink-500', bg: 'bg-pink-50', ring: 'ring-pink-100', accent: '#ec4899', icon: Layout },
   { id: 3, key: 'map', name: 'Map', desc: 'Cartographic references', color: 'text-orange-600', border: 'border-orange-600', bg: 'bg-orange-50', ring: 'ring-orange-100', accent: '#ea580c', icon: MapIcon },
   { id: 4, key: 'wargaming', name: 'Wargaming', desc: 'Tactical sandbox models', color: 'text-emerald-600', border: 'border-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-100', accent: '#059669', icon: Swords },
-  { id: 5, key: 'whiteboard', name: 'Whiteboard', desc: 'Marker-based vertical surfaces', color: 'text-pink-500', border: 'border-pink-500', bg: 'bg-pink-50', ring: 'ring-pink-100', accent: '#ec4899', icon: Layout },
-  { id: 6, key: 'printed_papers', name: 'Printed Paper', desc: 'Hardcopy physical documents', color: 'text-indigo-600', border: 'border-indigo-600', bg: 'bg-indigo-50', ring: 'ring-indigo-100', accent: '#4f46e5', icon: FileText },
 ];
 
 export default function App() {
@@ -71,7 +71,7 @@ export default function App() {
 
   const [groundTruth, setGroundTruth] = useState<any[] | null>(null);
   const [metricsResults, setMetricsResults] = useState<any>(null);
-  const [importedAnnotations, setImportedAnnotations] = useState<Record<number, number[]>>({});
+  const [importedAnnotations, setImportedAnnotations] = useState<Record<string, Record<number, number[]>>>({});
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -82,91 +82,143 @@ export default function App() {
       skipEmptyLines: true,
       complete: (results) => {
         setGroundTruth(results.data);
-        calculateStats(results.data, Object.keys(importedAnnotations).length > 0 ? importedAnnotations : annotations);
+        calculateStats(results.data);
       }
     });
   };
 
-  const handleImportAnnotations = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleImportAnnotations = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        const annots = json.annotations || json;
-        setImportedAnnotations(annots);
-        if (groundTruth) {
-          calculateStats(groundTruth, annots);
-        }
-      } catch (err) {
-        console.error("Failed to parse annotations", err);
-      }
-    };
-    reader.readAsText(file);
+    const newImportedAnnots: Record<string, Record<number, number[]>> = { ...importedAnnotations };
+
+    for (const file of Array.from(files) as File[]) {
+      await new Promise<void>((resolve) => {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            const annotationMap: Record<number, number[]> = {};
+            
+            // Map CSV row to category IDs
+            // The CSV format matches Truth: filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
+            results.data.forEach((row: any, idx: number) => {
+              const fileIdx = idx + 1; // Assuming sequential for now if image files not loaded, 
+              // but better to match filename if available
+              const labels: number[] = [];
+              CATEGORIES.forEach(cat => {
+                const val = row[cat.key];
+                if (val === '1' || val === 1 || String(val).toLowerCase() === 'true') {
+                  labels.push(cat.id);
+                }
+              });
+              
+              // We'll use the row index + 1 as image index if we can't find a file matching filename
+              // In metrics, we'll primarily match by filename in calculateStats anyway.
+              annotationMap[fileIdx] = labels;
+              
+              // Store filename hint if present
+              if (row.filename) {
+                 const baseName = String(row.filename).split(/[/\\]/).pop() || String(row.filename);
+                 (annotationMap as any)[`__file_${baseName}`] = labels;
+              }
+            });
+
+            newImportedAnnots[file.name] = annotationMap;
+            resolve();
+          }
+        });
+      });
+    }
+
+    setImportedAnnotations(newImportedAnnots);
   };
 
   useEffect(() => {
     if (groundTruth) {
-      calculateStats(groundTruth, Object.keys(importedAnnotations).length > 0 ? importedAnnotations : annotations);
+      calculateStats(groundTruth);
     }
   }, [annotations, groundTruth, importedAnnotations]);
 
-  const calculateStats = (gtData: any[], targetAnnotations: Record<number, number[]>) => {
-    // filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
-    let totalCorrect = 0;
-    let totalSamples = 0;
+  const calculateStats = (gtData: any[]) => {
+    // Determine which annotation sets to use
+    // If we have imported ones, use those. Otherwise use current session.
+    const setsToEvaluate: Record<number, number[]>[] = [];
+    
+    if (Object.keys(importedAnnotations).length > 0) {
+      Object.values(importedAnnotations).forEach(set => setsToEvaluate.push(set as Record<number, number[]>));
+    } else {
+      setsToEvaluate.push(annotations);
+    }
 
-    const classStats = CATEGORIES.reduce((acc: any, cat) => {
+    if (setsToEvaluate.length === 0) return;
+
+    let aggregateAccuracy = 0;
+    let aggregateMeanF1 = 0;
+    let totalValidatedSamples = 0;
+
+    const aggregateClassStats = CATEGORIES.reduce((acc: any, cat) => {
       acc[cat.key] = { tp: 0, fp: 0, fn: 0, tn: 0 };
       return acc;
     }, {});
 
-    // Map annotations by filename for easy lookup
-    const annotationMap: Record<string, number[]> = {};
-    Object.entries(targetAnnotations).forEach(([idx, ids]) => {
-      const file = imageFiles[parseInt(idx) - 1];
-      if (file) {
-        const baseName = file.name.split(/[/\\]/).pop() || file.name;
-        annotationMap[baseName] = ids as number[];
-      }
-    });
+    setsToEvaluate.forEach(targetAnnotations => {
+      let totalCorrect = 0;
+      let totalSamples = 0;
 
-    gtData.forEach(row => {
-      const filename = String(row.filename || '').trim();
-      if (!filename) return;
-
-      // Try fuzzy matching filename (handle potential path prefixes in row.filename)
-      const baseFilename = filename.split(/[/\\]/).pop() || filename;
-      const userLabels = annotationMap[baseFilename] || annotationMap[filename] || [];
-      totalSamples++;
-
-      let isImageCorrect = true;
-
-      CATEGORIES.forEach(cat => {
-        const isSelectedByUser = userLabels.includes(cat.id);
-        const gtValue = row[cat.key];
-        const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
-
-        if (isSelectedByUser && isPresentInGT) {
-          classStats[cat.key].tp++;
-        } else if (isSelectedByUser && !isPresentInGT) {
-          classStats[cat.key].fp++;
-          isImageCorrect = false;
-        } else if (!isSelectedByUser && isPresentInGT) {
-          classStats[cat.key].fn++;
-          isImageCorrect = false;
+      // Map annotations by filename for easy lookup
+      const annotationMap: Record<string, number[]> = {};
+      Object.entries(targetAnnotations).forEach(([idx, ids]) => {
+        // Handle the filename hint stored during import
+        if (idx.startsWith('__file_')) {
+          annotationMap[idx.replace('__file_', '')] = ids as number[];
         } else {
-          classStats[cat.key].tn++;
+          const file = imageFiles[parseInt(idx) - 1] as File | undefined;
+          if (file) {
+            const baseName = file.name.split(/[/\\]/).pop() || file.name;
+            annotationMap[baseName] = ids as number[];
+          }
         }
       });
 
-      if (isImageCorrect) totalCorrect++;
+      gtData.forEach(row => {
+        const filename = String(row.filename || '').trim();
+        if (!filename) return;
+
+        const baseFilename = filename.split(/[/\\]/).pop() || filename;
+        const userLabels = annotationMap[baseFilename] || annotationMap[filename] || [];
+        totalSamples++;
+        totalValidatedSamples++;
+
+        let isImageCorrect = true;
+
+        CATEGORIES.forEach(cat => {
+          const isSelectedByUser = userLabels.includes(cat.id);
+          const gtValue = row[cat.key];
+          const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
+
+          if (isSelectedByUser && isPresentInGT) {
+            aggregateClassStats[cat.key].tp++;
+          } else if (isSelectedByUser && !isPresentInGT) {
+            aggregateClassStats[cat.key].fp++;
+            isImageCorrect = false;
+          } else if (!isSelectedByUser && isPresentInGT) {
+            aggregateClassStats[cat.key].fn++;
+            isImageCorrect = false;
+          } else {
+            aggregateClassStats[cat.key].tn++;
+          }
+        });
+
+        if (isImageCorrect) totalCorrect++;
+      });
+
+      aggregateAccuracy += (totalSamples === 0 ? 0 : totalCorrect / totalSamples);
     });
 
     const categoryMetrics = CATEGORIES.map(cat => {
-      const { tp, fp, fn } = classStats[cat.key];
+      const { tp, fp, fn } = aggregateClassStats[cat.key];
       const precision = tp + fp === 0 ? 0 : tp / (tp + fp);
       const recall = tp + fn === 0 ? 0 : tp / (tp + fn);
       const f1 = precision + recall === 0 ? 0 : 2 * (precision * recall) / (precision + recall);
@@ -179,19 +231,20 @@ export default function App() {
       };
     });
 
-    const overallAccuracy = totalSamples === 0 ? 0 : totalCorrect / totalSamples;
+    const meanAccuracy = aggregateAccuracy / setsToEvaluate.length;
     const meanF1 = categoryMetrics.reduce((acc, curr) => acc + curr.f1, 0) / categoryMetrics.length;
 
     setMetricsResults({
-      accuracy: overallAccuracy,
+      accuracy: meanAccuracy,
       meanF1,
       categoryMetrics,
-      totalSamples
+      totalSamples: totalValidatedSamples / setsToEvaluate.length, // Avg samples per user or total? Let's say per user.
+      userCount: setsToEvaluate.length
     });
   };
 
   const toggleTheaterMode = () => {
-    setIsTheaterMode(!isTheaterMode);
+    setIsTheaterMode(prev => !prev);
   };
 
   const handleSelectDirectory = () => {
@@ -409,26 +462,24 @@ export default function App() {
   };
 
   const downloadCSV = () => {
-    const safeName = userName.trim() || 'anonymous';
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-    const filename = `annotations_${safeName.toLowerCase().replace(/\s+/g, '_')}_${timestamp}.csv`;
+    const filename = `annotations_${timestamp}.csv`;
     
-    let csvContent = 'ImageIndex,Filename,Labels,StartTime,EndTime,DurationSeconds\n';
+    // Header matches Truth: filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
+    const headers = ['filename', ...CATEGORIES.map(c => c.key)];
+    let csvContent = headers.join(',') + '\n';
+
     Object.entries(annotations).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([id, ids]) => {
       const index = Number(id);
       const file = imageFiles[index - 1];
       const fileName = file ? file.name : `image_${id}`;
-      const labels = (ids as number[]).map(lid => {
-        if (lid === -1) return "No Label";
-        return CATEGORIES.find(c => c.id === lid)?.name;
-      }).join('; ');
+      
+      const rowData = [fileName];
+      CATEGORIES.forEach(cat => {
+        rowData.push((ids as number[]).includes(cat.id) ? '1' : '0');
+      });
 
-      const metrics = annotationMetrics[index];
-      const start = metrics?.start || '';
-      const end = metrics?.end || '';
-      const duration = metrics?.duration || 0;
-
-      csvContent += `${id},"${fileName}","${labels}","${start}","${end}",${duration}\n`;
+      csvContent += rowData.join(',') + '\n';
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -492,7 +543,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCategories, currentImage, totalImages, annotations, sessionStartTime]);
+  }, [selectedCategories, currentImage, totalImages, annotations, sessionStartTime, isTheaterMode]);
 
   // Auto-save logic every 30 seconds
   useEffect(() => {
@@ -562,7 +613,7 @@ export default function App() {
                       >
                         <div className="flex flex-col text-left">
                           <span className="text-[10px] font-black uppercase tracking-widest text-purple-600">User Data</span>
-                          <span className="text-[10px] font-bold text-on-surface-variant opacity-60">SELECT JSON</span>
+                          <span className="text-[10px] font-bold text-on-surface-variant opacity-60">SELECT CSV(s)</span>
                         </div>
                         <div className="p-2 bg-white rounded-xl shadow-sm text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
                           <FileText size={20} />
@@ -570,7 +621,8 @@ export default function App() {
                         <input 
                           id="import-annots"
                           type="file" 
-                          accept=".json"
+                          accept=".csv"
+                          multiple
                           onChange={handleImportAnnotations}
                           className="hidden"
                         />
@@ -592,7 +644,7 @@ export default function App() {
                         <h3 className="font-bold text-lg mb-2">Ready for Analysis</h3>
                         <p className="text-sm text-on-surface-variant leading-relaxed">
                           1. Upload the <b>Ground Truth CSV</b><br/>
-                          2. Upload a <b>User JSON Export</b> (Optional, defaults to current session)<br/>
+                          2. Upload <b>User CSV Export(s)</b> (Optional, defaults to current session)<br/>
                           <code className="block mt-4 p-3 bg-background rounded-xl text-[10px] font-mono break-all leading-normal text-left">
                             filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
                           </code>
@@ -1093,7 +1145,7 @@ export default function App() {
                 onScroll={handleTutorialScroll}
               >
                 <div className="w-16 h-1 bg-primary/20 rounded-full mx-auto mb-8" />
-                <h2 className="text-3xl font-black tracking-tight text-on-surface text-center mb-4 uppercase">Labeling Workspace</h2>
+                <h2 className="text-3xl font-black tracking-tight text-on-surface text-center mb-4 uppercase">AnnotatePro Workspace</h2>
                 <p className="text-on-surface-variant text-center mb-10 max-w-md mx-auto">
                   Welcome to your extraction workflow. Here are some quick tips to get you started efficiently.
                 </p>
