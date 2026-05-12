@@ -47,13 +47,28 @@ const CATEGORIES = [
 export default function App() {
   const [activeView, setActiveView] = useState<'labeling' | 'metrics'>('labeling');
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
-  const [annotations, setAnnotations] = useState<Record<number, number[]>>({});
-  const [annotationMetrics, setAnnotationMetrics] = useState<Record<number, { start: string, end: string, duration: number }>>({});
-  const [accumulatedTimes, setAccumulatedTimes] = useState<Record<number, number>>({});
+  const [annotations, setAnnotations] = useState<Record<number, number[]>>(() => {
+    try {
+      const saved = localStorage.getItem('annotations_v1');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const [annotationMetrics, setAnnotationMetrics] = useState<Record<number, { start: string, end: string, duration: number }>>(() => {
+    try {
+      const saved = localStorage.getItem('metrics_v1');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const [accumulatedTimes, setAccumulatedTimes] = useState<Record<number, number>>(() => {
+    try {
+      const saved = localStorage.getItem('accumulated_v1');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
-  const [showTutorial, setShowTutorial] = useState(true);
+  const [showTutorial, setShowTutorial] = useState(() => !localStorage.getItem('tutorial_completed'));
   const [datasetPath, setDatasetPath] = useState(() => localStorage.getItem('dataset_path') || 'Blip-C Empty');
-  const [currentImage, setCurrentImage] = useState(1);
+  const [currentImage, setCurrentImage] = useState(() => Number(localStorage.getItem('current_image_v1')) || 1);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
@@ -107,10 +122,50 @@ export default function App() {
   useEffect(() => {
     // Only attempt auto-load on mount if running on localhost or similar dev environments
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (isLocal && imageFiles.length === 0) {
+    if (isLocal && imageFiles.length === 0 && Object.keys(annotations).length === 0) {
       attemptAutoLoad();
     }
   }, []);
+
+  // Auto-save progress to localStorage
+  useEffect(() => {
+    if (Object.keys(annotations).length > 0) {
+      localStorage.setItem('annotations_v1', JSON.stringify(annotations));
+    }
+    if (Object.keys(annotationMetrics).length > 0) {
+      localStorage.setItem('metrics_v1', JSON.stringify(annotationMetrics));
+    }
+    if (Object.keys(accumulatedTimes).length > 0) {
+      localStorage.setItem('accumulated_v1', JSON.stringify(accumulatedTimes));
+    }
+    localStorage.setItem('current_image_v1', currentImage.toString());
+    if (!showTutorial) {
+      localStorage.setItem('tutorial_completed', 'true');
+    }
+  }, [annotations, annotationMetrics, accumulatedTimes, currentImage, showTutorial]);
+
+  // Ensure currentImage stays in bounds when image list changes
+  useEffect(() => {
+    if (totalImages > 0 && currentImage > totalImages) {
+      setCurrentImage(totalImages);
+    }
+  }, [totalImages, currentImage]);
+
+  const handleResetProgress = () => {
+    if (window.confirm('Are you sure you want to clear all labeling progress? This cannot be undone.')) {
+      setAnnotations({});
+      setAnnotationMetrics({});
+      setAccumulatedTimes({});
+      setCurrentImage(1);
+      setSelectedCategories([]);
+      setIsFinished(false);
+      localStorage.removeItem('annotations_v1');
+      localStorage.removeItem('metrics_v1');
+      localStorage.removeItem('accumulated_v1');
+      localStorage.removeItem('current_image_v1');
+      setLastSaved(null);
+    }
+  };
 
   const [groundTruth, setGroundTruth] = useState<any[] | null>(null);
   const [metricsResults, setMetricsResults] = useState<any>(null);
@@ -313,8 +368,6 @@ export default function App() {
           
           setImageFiles(files);
           setTotalImages(files.length);
-          setCurrentImage(1);
-          setSelectedCategories([]);
           
           const newPath = `/${handle.name}`;
           setDatasetPath(newPath);
@@ -345,8 +398,6 @@ export default function App() {
         
         setImageFiles(newImageFiles);
         setTotalImages(newImageFiles.length);
-        setCurrentImage(1);
-        setSelectedCategories([]);
         
         const relativePath = files[0].webkitRelativePath;
         const rootFolder = relativePath.split('/')[0];
@@ -461,7 +512,7 @@ export default function App() {
   const recordMetrics = (index: number) => {
     const currentAccumulated = accumulatedTimes[index] || 0;
     const finalDuration = currentAccumulated + (sessionStartTime ? (Date.now() - sessionStartTime) : 0);
-    const durationSec = parseFloat((finalDuration / 1000).toFixed(3));
+    const sessionDurationSec = parseFloat((finalDuration / 1000).toFixed(3));
     
     const nowStr = new Date().toISOString();
     setAnnotationMetrics(prev => ({
@@ -469,11 +520,11 @@ export default function App() {
       [index]: {
         start: prev[index]?.start || nowStr,
         end: nowStr,
-        duration: durationSec
+        duration: parseFloat(((prev[index]?.duration || 0) + sessionDurationSec).toFixed(3))
       }
     }));
 
-    // Reset accumulated for this image
+    // Reset accumulated for this image bucket since it has been committed to metrics
     setAccumulatedTimes(prev => {
       const next = { ...prev };
       delete next[index];
@@ -547,7 +598,8 @@ export default function App() {
     const filename = `annotations_${timestamp}.csv`;
     
     // Header matches Truth: filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
-    const headers = ['filename', ...CATEGORIES.map(c => c.key)];
+    // We add StartTime, EndTime, and DurationSeconds for analysis
+    const headers = ['filename', ...CATEGORIES.map(c => c.key), 'StartTime', 'EndTime', 'DurationSeconds'];
     let csvContent = headers.join(',') + '\n';
 
     Object.entries(annotations).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([id, ids]) => {
@@ -555,10 +607,33 @@ export default function App() {
       const file = imageFiles[index - 1];
       const fileName = file ? file.name : `image_${id}`;
       
+      const metrics = annotationMetrics[index];
+      const startTime = metrics?.start || '';
+      
+      // Calculate real-time duration: recorded + accumulated + current session if it's the active image
+      let totalDuration = metrics?.duration || 0;
+      let finalEndTime = metrics?.end || '';
+      
+      // Add any accumulated time that hasn't been committed to annotationMetrics yet
+      const accumulated = (accumulatedTimes[index] || 0) / 1000;
+      totalDuration += accumulated;
+      
+      // If this is the current image and timer is running, add the live elapsed time
+      if (index === currentImage && sessionStartTime) {
+        const liveElapsed = (Date.now() - sessionStartTime) / 1000;
+        totalDuration += liveElapsed;
+        finalEndTime = new Date().toISOString();
+      }
+
       const rowData = [fileName];
       CATEGORIES.forEach(cat => {
         rowData.push((ids as number[]).includes(cat.id) ? '1' : '0');
       });
+
+      // Append metrics
+      rowData.push(startTime);
+      rowData.push(finalEndTime);
+      rowData.push(totalDuration.toFixed(3));
 
       csvContent += rowData.join(',') + '\n';
     });
@@ -1049,7 +1124,7 @@ export default function App() {
                     </button>
 
                     <button 
-                      onClick={() => window.location.reload()}
+                      onClick={handleResetProgress}
                       className="w-full py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] text-on-surface-variant hover:bg-background transition-all"
                     >
                       Start New Session
@@ -1080,13 +1155,22 @@ export default function App() {
                 {sessionStartTime ? 'Running' : 'Paused / Start'}
               </button>
               {Object.keys(annotations).length > 0 && (
-                <button 
-                  onClick={downloadCSV}
-                  className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all border border-transparent hover:border-primary/20"
-                  title="Download CSV of current progress"
-                >
-                  <Save size={20} />
-                </button>
+                <div className="flex gap-1">
+                  <button 
+                    onClick={downloadCSV}
+                    className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all border border-transparent hover:border-primary/20"
+                    title="Download CSV of current progress"
+                  >
+                    <Save size={20} />
+                  </button>
+                  <button 
+                    onClick={handleResetProgress}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-200"
+                    title="Clear all labels and timer progress"
+                  >
+                    <RotateCcw size={18} />
+                  </button>
+                </div>
               )}
             </div>
           </div>
