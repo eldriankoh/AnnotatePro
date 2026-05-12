@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef, type ReactNode, type UIEvent } from 'react';
+import { useState, useEffect, useRef, type ReactNode, type UIEvent, type ChangeEvent } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight,
@@ -25,21 +25,27 @@ import {
   Map as MapIcon,
   Swords,
   Layout,
-  FileText
+  FileText,
+  BarChart2,
+  Upload,
+  AlertCircle,
+  Trophy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import Papa from 'papaparse';
 
 const CATEGORIES = [
-  { id: 1, name: 'Projected Slides', desc: 'Visual presentation media', color: 'text-primary', border: 'border-primary', bg: 'bg-primary/5', ring: 'ring-primary/20', accent: '#0071E3', icon: Presentation },
-  { id: 2, name: 'Computer Screen', desc: 'LCD/OLED active displays', color: 'text-purple-600', border: 'border-purple-600', bg: 'bg-purple-50', ring: 'ring-purple-100', accent: '#9333ea', icon: Monitor },
-  { id: 3, name: 'Map', desc: 'Cartographic references', color: 'text-orange-600', border: 'border-orange-600', bg: 'bg-orange-50', ring: 'ring-orange-100', accent: '#ea580c', icon: MapIcon },
-  { id: 4, name: 'Wargaming', desc: 'Tactical sandbox models', color: 'text-emerald-600', border: 'border-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-100', accent: '#059669', icon: Swords },
-  { id: 5, name: 'Whiteboard', desc: 'Marker-based vertical surfaces', color: 'text-pink-500', border: 'border-pink-500', bg: 'bg-pink-50', ring: 'ring-pink-100', accent: '#ec4899', icon: Layout },
-  { id: 6, name: 'Printed Paper', desc: 'Hardcopy physical documents', color: 'text-indigo-600', border: 'border-indigo-600', bg: 'bg-indigo-50', ring: 'ring-indigo-100', accent: '#4f46e5', icon: FileText },
+  { id: 1, key: 'projected_slides', name: 'Projected Slides', desc: 'Visual presentation media', color: 'text-primary', border: 'border-primary', bg: 'bg-primary/5', ring: 'ring-primary/20', accent: '#0071E3', icon: Presentation },
+  { id: 2, key: 'computer_screen', name: 'Computer Screen', desc: 'LCD/OLED active displays', color: 'text-purple-600', border: 'border-purple-600', bg: 'bg-purple-50', ring: 'ring-purple-100', accent: '#9333ea', icon: Monitor },
+  { id: 3, key: 'map', name: 'Map', desc: 'Cartographic references', color: 'text-orange-600', border: 'border-orange-600', bg: 'bg-orange-50', ring: 'ring-orange-100', accent: '#ea580c', icon: MapIcon },
+  { id: 4, key: 'wargaming', name: 'Wargaming', desc: 'Tactical sandbox models', color: 'text-emerald-600', border: 'border-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-100', accent: '#059669', icon: Swords },
+  { id: 5, key: 'whiteboard', name: 'Whiteboard', desc: 'Marker-based vertical surfaces', color: 'text-pink-500', border: 'border-pink-500', bg: 'bg-pink-50', ring: 'ring-pink-100', accent: '#ec4899', icon: Layout },
+  { id: 6, key: 'printed_papers', name: 'Printed Paper', desc: 'Hardcopy physical documents', color: 'text-indigo-600', border: 'border-indigo-600', bg: 'bg-indigo-50', ring: 'ring-indigo-100', accent: '#4f46e5', icon: FileText },
 ];
 
 export default function App() {
+  const [activeView, setActiveView] = useState<'labeling' | 'metrics'>('labeling');
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [annotations, setAnnotations] = useState<Record<number, number[]>>({});
   const [annotationMetrics, setAnnotationMetrics] = useState<Record<number, { start: string, end: string, duration: number }>>({});
@@ -59,8 +65,130 @@ export default function App() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const prevImageRef = useRef(currentImage);
   const directoryInputRef = useRef<HTMLInputElement>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
   const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  const [groundTruth, setGroundTruth] = useState<any[] | null>(null);
+  const [metricsResults, setMetricsResults] = useState<any>(null);
+  const [importedAnnotations, setImportedAnnotations] = useState<Record<number, number[]>>({});
+
+  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        setGroundTruth(results.data);
+        calculateStats(results.data, Object.keys(importedAnnotations).length > 0 ? importedAnnotations : annotations);
+      }
+    });
+  };
+
+  const handleImportAnnotations = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        const annots = json.annotations || json;
+        setImportedAnnotations(annots);
+        if (groundTruth) {
+          calculateStats(groundTruth, annots);
+        }
+      } catch (err) {
+        console.error("Failed to parse annotations", err);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  useEffect(() => {
+    if (groundTruth) {
+      calculateStats(groundTruth, Object.keys(importedAnnotations).length > 0 ? importedAnnotations : annotations);
+    }
+  }, [annotations, groundTruth, importedAnnotations]);
+
+  const calculateStats = (gtData: any[], targetAnnotations: Record<number, number[]>) => {
+    // filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
+    let totalCorrect = 0;
+    let totalSamples = 0;
+
+    const classStats = CATEGORIES.reduce((acc: any, cat) => {
+      acc[cat.key] = { tp: 0, fp: 0, fn: 0, tn: 0 };
+      return acc;
+    }, {});
+
+    // Map annotations by filename for easy lookup
+    const annotationMap: Record<string, number[]> = {};
+    Object.entries(targetAnnotations).forEach(([idx, ids]) => {
+      const file = imageFiles[parseInt(idx) - 1];
+      if (file) {
+        const baseName = file.name.split(/[/\\]/).pop() || file.name;
+        annotationMap[baseName] = ids as number[];
+      }
+    });
+
+    gtData.forEach(row => {
+      const filename = String(row.filename || '').trim();
+      if (!filename) return;
+
+      // Try fuzzy matching filename (handle potential path prefixes in row.filename)
+      const baseFilename = filename.split(/[/\\]/).pop() || filename;
+      const userLabels = annotationMap[baseFilename] || annotationMap[filename] || [];
+      totalSamples++;
+
+      let isImageCorrect = true;
+
+      CATEGORIES.forEach(cat => {
+        const isSelectedByUser = userLabels.includes(cat.id);
+        const gtValue = row[cat.key];
+        const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
+
+        if (isSelectedByUser && isPresentInGT) {
+          classStats[cat.key].tp++;
+        } else if (isSelectedByUser && !isPresentInGT) {
+          classStats[cat.key].fp++;
+          isImageCorrect = false;
+        } else if (!isSelectedByUser && isPresentInGT) {
+          classStats[cat.key].fn++;
+          isImageCorrect = false;
+        } else {
+          classStats[cat.key].tn++;
+        }
+      });
+
+      if (isImageCorrect) totalCorrect++;
+    });
+
+    const categoryMetrics = CATEGORIES.map(cat => {
+      const { tp, fp, fn } = classStats[cat.key];
+      const precision = tp + fp === 0 ? 0 : tp / (tp + fp);
+      const recall = tp + fn === 0 ? 0 : tp / (tp + fn);
+      const f1 = precision + recall === 0 ? 0 : 2 * (precision * recall) / (precision + recall);
+      return {
+        ...cat,
+        precision,
+        recall,
+        f1,
+        tp, fp, fn
+      };
+    });
+
+    const overallAccuracy = totalSamples === 0 ? 0 : totalCorrect / totalSamples;
+    const meanF1 = categoryMetrics.reduce((acc, curr) => acc + curr.f1, 0) / categoryMetrics.length;
+
+    setMetricsResults({
+      accuracy: overallAccuracy,
+      meanF1,
+      categoryMetrics,
+      totalSamples
+    });
+  };
 
   const toggleTheaterMode = () => {
     setIsTheaterMode(!isTheaterMode);
@@ -199,7 +327,7 @@ export default function App() {
   const recordMetrics = (index: number) => {
     const currentAccumulated = accumulatedTimes[index] || 0;
     const finalDuration = currentAccumulated + (sessionStartTime ? (Date.now() - sessionStartTime) : 0);
-    const durationSec = Math.round(finalDuration / 1000);
+    const durationSec = parseFloat((finalDuration / 1000).toFixed(3));
     
     const nowStr = new Date().toISOString();
     setAnnotationMetrics(prev => ({
@@ -240,7 +368,7 @@ export default function App() {
   }, [currentImage]);
 
   const handleApply = () => {
-    if (selectedCategories.length === 0) return;
+    if (selectedCategories.length === 0 || (!sessionStartTime && !showTutorial)) return;
     
     // Store annotation
     setAnnotations(prev => ({ ...prev, [currentImage]: selectedCategories }));
@@ -257,6 +385,7 @@ export default function App() {
   };
 
   const handleNoLabel = () => {
+    if (!sessionStartTime && !showTutorial) return;
     // Store -1 for No Label
     setAnnotations(prev => ({ ...prev, [currentImage]: [-1] }));
     recordMetrics(currentImage);
@@ -324,18 +453,21 @@ export default function App() {
       if (e.key === 'Enter') {
         e.preventDefault();
         handleApply();
-      } else if ((e.key === 'z' && (e.ctrlKey || e.metaKey)) || (e.key === 'ArrowLeft' && currentImage > 1)) {
-        // Undo / Back
+      } else if (e.key === 'M' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        // Secret toggle for metrics
         e.preventDefault();
-        if (currentImage > 1) {
-          setCurrentImage(prev => prev - 1);
-        }
+        setActiveView(prev => prev === 'labeling' ? 'metrics' : 'labeling');
+      } else if (e.key === 'ArrowLeft' && currentImage > 1) {
+        // Back
+        e.preventDefault();
+        setCurrentImage(prev => prev - 1);
       } else if (e.key === 'ArrowRight' && currentImage < totalImages) {
         setCurrentImage(prev => prev + 1);
       } else if (e.key === '0') {
         e.preventDefault();
-        if (!sessionStartTime) handleTimerToggle();
-        handleNoLabel();
+        if (sessionStartTime) {
+          handleNoLabel();
+        }
       } else if (e.key === ' ') {
         e.preventDefault();
         handleTimerToggle();
@@ -381,11 +513,161 @@ export default function App() {
         directory="" 
         className="hidden" 
       />
-      <div className="flex flex-1 overflow-hidden">
+      <input 
+        type="file" 
+        ref={csvInputRef}
+        accept=".csv"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+      
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Main Workspace Canvas */}
         <main className="flex-1 flex flex-col relative overflow-hidden bg-background">
           <AnimatePresence mode="wait">
-            {!isFinished ? (
+            {activeView === 'metrics' ? (
+              <motion.div
+                key="metrics-view"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="flex-1 overflow-y-auto p-12"
+              >
+                <div className="max-w-4xl mx-auto space-y-10">
+                  <div className="flex items-center justify-between">
+                    <button 
+                      onClick={() => setActiveView('labeling')}
+                      className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors text-[10px] font-black uppercase tracking-widest"
+                    >
+                      <ChevronLeft size={16} />
+                      Back to Labeling
+                    </button>
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => csvInputRef.current?.click()}
+                        className="bg-primary/5 p-4 pl-6 rounded-3xl border border-primary/10 flex items-center gap-4 hover:bg-primary/10 transition-all active:scale-95 group"
+                      >
+                        <div className="flex flex-col text-left">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-primary">Ground Truth</span>
+                          <span className="text-[10px] font-bold text-on-surface-variant opacity-60">SELECT CSV</span>
+                        </div>
+                        <div className="p-2 bg-white rounded-xl shadow-sm text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                          <Upload size={20} />
+                        </div>
+                      </button>
+
+                      <button 
+                        onClick={() => document.getElementById('import-annots')?.click()}
+                        className="bg-purple-50 p-4 pl-6 rounded-3xl border border-purple-200 flex items-center gap-4 hover:bg-purple-100 transition-all active:scale-95 group"
+                      >
+                        <div className="flex flex-col text-left">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-purple-600">User Data</span>
+                          <span className="text-[10px] font-bold text-on-surface-variant opacity-60">SELECT JSON</span>
+                        </div>
+                        <div className="p-2 bg-white rounded-xl shadow-sm text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                          <FileText size={20} />
+                        </div>
+                        <input 
+                          id="import-annots"
+                          type="file" 
+                          accept=".json"
+                          onChange={handleImportAnnotations}
+                          className="hidden"
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h2 className="text-3xl font-black tracking-tight text-on-surface uppercase mb-2">Performance Analytics</h2>
+                    <p className="text-on-surface-variant text-sm">Validate extraction accuracy against ground truth datasets</p>
+                  </div>
+
+                  {!metricsResults ? (
+                    <div className="border-2 border-dashed border-outline-variant rounded-[40px] p-20 text-center flex flex-col items-center gap-6">
+                      <div className="w-20 h-20 bg-background rounded-full flex items-center justify-center text-outline">
+                        <BarChart2 size={40} />
+                      </div>
+                      <div className="max-w-xs transition-colors">
+                        <h3 className="font-bold text-lg mb-2">Ready for Analysis</h3>
+                        <p className="text-sm text-on-surface-variant leading-relaxed">
+                          1. Upload the <b>Ground Truth CSV</b><br/>
+                          2. Upload a <b>User JSON Export</b> (Optional, defaults to current session)<br/>
+                          <code className="block mt-4 p-3 bg-background rounded-xl text-[10px] font-mono break-all leading-normal text-left">
+                            filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
+                          </code>
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-8">
+                      {/* High Level Stats */}
+                      <div className="grid grid-cols-3 gap-6">
+                        <div className="bg-white p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Overall Accuracy</span>
+                          <span className="text-4xl font-black tracking-tighter text-on-surface">{(metricsResults.accuracy * 100).toFixed(1)}%</span>
+                          <div className="mt-4 h-1.5 bg-outline-variant/30 rounded-full overflow-hidden">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${metricsResults.accuracy * 100}%` }} className="h-full bg-primary" />
+                          </div>
+                        </div>
+                        <div className="bg-white p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Mean F1 Score</span>
+                          <span className="text-4xl font-black tracking-tighter text-primary">{(metricsResults.meanF1).toFixed(3)}</span>
+                          <div className="mt-4 h-1.5 bg-outline-variant/30 rounded-full overflow-hidden">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${metricsResults.meanF1 * 100}%` }} className="h-full bg-primary" />
+                          </div>
+                        </div>
+                        <div className="bg-white p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Samples Validated</span>
+                          <span className="text-4xl font-black tracking-tighter text-on-surface">{metricsResults.totalSamples}</span>
+                          <div className="mt-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Images Matched</div>
+                        </div>
+                      </div>
+
+                      {/* Class Level Stats */}
+                      <div className="bg-white rounded-[40px] border border-outline-variant shadow-sm overflow-hidden">
+                        <div className="px-8 py-6 border-b border-outline-variant flex items-center justify-between">
+                          <h3 className="font-bold uppercase tracking-widest text-xs">Category Breakdown</h3>
+                          <div className="flex gap-4 text-[10px] font-black text-on-surface-variant uppercase">
+                            <span>Precision</span>
+                            <span>Recall</span>
+                            <span>F1 Score</span>
+                          </div>
+                        </div>
+                        <div className="divide-y divide-outline-variant">
+                          {metricsResults.categoryMetrics.map((cat: any) => (
+                            <div key={cat.id} className="px-8 py-6 flex items-center justify-between hover:bg-background transition-colors group">
+                              <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-2xl ${cat.bg} ${cat.color} border ${cat.border} flex items-center justify-center`}>
+                                  <cat.icon size={18} />
+                                </div>
+                                <div>
+                                  <div className="font-bold text-sm tracking-tight">{cat.name}</div>
+                                  <div className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-tighter">
+                                    TP: {cat.tp} / FP: {cat.fp} / FN: {cat.fn}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex gap-8 items-center tabular-nums">
+                                <div className="text-right flex flex-col w-12">
+                                  <span className="text-xs font-bold">{(cat.precision * 100).toFixed(0)}%</span>
+                                </div>
+                                <div className="text-right flex flex-col w-12">
+                                  <span className="text-xs font-bold">{(cat.recall * 100).toFixed(0)}%</span>
+                                </div>
+                                <div className="text-right flex flex-col w-12">
+                                  <span className="text-sm font-black text-primary">{(cat.f1).toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            ) : !isFinished ? (
               <motion.div 
                 key="workspace"
                 initial={{ opacity: 0 }}
@@ -394,68 +676,59 @@ export default function App() {
                 className="flex-1 flex flex-col overflow-hidden"
               >
                 {/* Header Dashboard Area */}
-                <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isTheaterMode ? 'max-h-0 opacity-0 mb-0' : 'max-h-[200px] mb-4'}`}>
-                  <div className="px-margin-edge pt-8 flex items-end justify-between">
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2 text-on-surface-variant mb-1 group">
-                        <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
-                        <div className="flex items-center group/path">
-                          <span className="text-[10px] font-bold tracking-widest uppercase mr-1 opacity-50">Directory:</span>
-                          <input 
-                            type="text"
-                            value={datasetPath}
-                            onChange={(e) => setDatasetPath(e.target.value)}
-                            className="bg-transparent border-none p-0 text-[10px] font-bold tracking-widest uppercase focus:outline-none focus:text-primary transition-colors w-full min-w-[200px] hover:bg-outline-variant/10 px-1 rounded cursor-text"
-                            placeholder="ENTER DIRECTORY PATH MANUALLY..."
-                            title="Click to edit path manually (Browse restricted in preview)"
+                <div className={`transition-all duration-500 ease-in-out border-b border-outline-variant bg-white/70 backdrop-blur-xl ${isTheaterMode ? 'max-h-0 opacity-0' : 'max-h-[300px] py-8'}`}>
+                  <div className="px-margin-edge flex items-center justify-between">
+                    <div className="flex items-center gap-12">
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2 text-on-surface-variant mb-2 group">
+                          <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
+                          <div className="flex items-center group/path">
+                            <span className="text-[10px] font-black tracking-widest uppercase mr-2 opacity-50">Dataset Path:</span>
+                            <span className="text-[10px] font-black tracking-widest uppercase text-on-surface truncate max-w-[240px]">
+                              {datasetPath || 'NOT SELECTED'}
+                            </span>
+                            <button 
+                              onClick={handleSelectDirectory}
+                              className="ml-4 px-3 py-1 rounded-full border border-outline-variant/50 hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tight"
+                            >
+                              CHANGE BROWSE
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <AnimatePresence mode="wait">
+                            {isSaving ? (
+                              <div className="flex items-center gap-1.5 text-primary">
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+                                <span className="text-[9px] font-black uppercase tracking-widest">Backing up</span>
+                              </div>
+                            ) : lastSaved && (
+                              <div className="flex items-center gap-1.5 text-on-surface-variant/40">
+                                <Save size={10} />
+                                <span className="text-[8px] font-bold uppercase tracking-tight">Sync {lastSaved}</span>
+                              </div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-start border-l border-outline-variant/20 pl-12">
+                        <span className="text-[11px] font-black text-primary uppercase tracking-[0.2em] mb-1.5">
+                          {totalImages === 0 ? 0 : currentImage} / {totalImages} COMPLETE
+                        </span>
+                        <div className="w-56 h-1.5 bg-outline-variant/20 rounded-full overflow-hidden shadow-inner">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${totalImages === 0 ? 0 : Math.min(100, (currentImage / totalImages) * 100)}%` }}
+                            className="h-full bg-primary transition-all duration-1000 ease-out" 
                           />
-                          <button 
-                            onClick={handleSelectDirectory}
-                            className="ml-2 px-2 py-0.5 rounded border border-outline-variant hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tighter cursor-pointer whitespace-nowrap"
-                            title="Browse directory (Cross-browser supported)"
-                          >
-                            BROWSE
-                          </button>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-6">
-                      {/* Progress Counter */}
-                      <div className="flex flex-col items-end">
-                        <span className="text-[11px] font-black text-primary uppercase tracking-[0.2em] mb-1">
-                          {totalImages === 0 ? 0 : currentImage} / {totalImages} COMPLETE
-                        </span>
-                        <div className="w-48 h-1 bg-outline-variant/30 rounded-full overflow-hidden">
-                          <div className="h-full bg-primary transition-all duration-700 ease-out" style={{ width: `${totalImages === 0 ? 0 : Math.min(100, (currentImage / totalImages) * 100)}%` }} />
-                        </div>
-                      </div>
-
-                      {/* Status Indicators */}
-                      <div className="flex items-center gap-3 pl-6 border-l border-outline-variant/30">
-                        <AnimatePresence mode="wait">
-                          {isSaving ? (
-                            <motion.div 
-                              initial={{ opacity: 0, y: 5 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -5 }}
-                              className="flex items-center gap-2 text-primary"
-                            >
-                              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider">Syncing...</span>
-                            </motion.div>
-                          ) : lastSaved && (
-                            <motion.div 
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 0.5 }}
-                              className="flex items-center gap-2 text-on-surface-variant"
-                            >
-                              <Save size={12} />
-                              <span className="text-[10px] font-medium tracking-tight whitespace-nowrap">Last saved at {lastSaved}</span>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
+                      {/* Controls removed as requested */}
                     </div>
                   </div>
                 </div>
@@ -747,11 +1020,21 @@ export default function App() {
               <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">Active Classes ({selectedCategories.length})</span>
               <div className="flex flex-wrap gap-1.5">
                 {selectedCategories.length > 0 ? (
-                  selectedCategories.map(id => (
-                    <span key={id} className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
-                      {CATEGORIES.find(c => c.id === id)?.name}
-                    </span>
-                  ))
+                  selectedCategories.map(id => {
+                    const cat = CATEGORIES.find(c => c.id === id);
+                    if (id === -1) {
+                      return (
+                        <span key={id} className="text-[10px] font-bold bg-red-50 text-red-500 px-2 py-0.5 rounded-full border border-red-200">
+                          No Label
+                        </span>
+                      );
+                    }
+                    return (
+                      <span key={id} className={`text-[10px] font-bold ${cat?.bg} ${cat?.color} px-2 py-0.5 rounded-full border ${cat?.border} opacity-80`}>
+                        {cat?.name}
+                      </span>
+                    );
+                  })
                 ) : (
                   <span className="text-sm font-bold text-outline opacity-40">NONE</span>
                 )}
@@ -764,23 +1047,25 @@ export default function App() {
                   onClick={() => currentImage > 1 && setCurrentImage(prev => prev - 1)}
                   disabled={currentImage <= 1}
                   className="px-4 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] border border-outline-variant text-on-surface-variant hover:bg-background transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
-                  title="Go back to previous image (Ctrl+Z)"
+                  title="Go back to previous image"
                 >
                   <ChevronLeft size={18} />
                 </button>
                 <button 
                   onClick={handleNoLabel}
-                  className="flex-1 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-500 transition-all active:scale-95 whitespace-nowrap"
+                  disabled={!sessionStartTime}
+                  className="flex-1 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-500 transition-all active:scale-95 whitespace-nowrap disabled:opacity-30 disabled:pointer-events-none"
                 >
                   No Label
                 </button>
               </div>
               <button 
                 onClick={handleApply}
+                disabled={!sessionStartTime || selectedCategories.length === 0}
                 className={`w-full py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] transition-all ${
-                  selectedCategories.length > 0 
+                  (selectedCategories.length > 0 && sessionStartTime)
                     ? 'bg-primary text-white shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 active:translate-y-0.5' 
-                    : 'bg-outline-variant/30 text-outline cursor-not-allowed'
+                    : 'bg-outline-variant/30 text-outline cursor-not-allowed opacity-50'
                 }`}
               >
                 Apply Extraction
@@ -839,15 +1124,11 @@ export default function App() {
                       Previous / Next Image
                     </li>
                     <li className="flex items-center gap-3 text-sm font-medium">
-                      <div className="w-16 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[9px] shadow-sm tracking-tighter">Ctrl + Z</div>
-                      Undo / Back
-                    </li>
-                    <li className="flex items-center gap-3 text-sm font-medium">
-                      <div className="w-6 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">Z / X</div>
+                      <div className="w-12 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">Z / X</div>
                       Zoom In / Out
                     </li>
                     <li className="flex items-center gap-3 text-sm font-medium">
-                      <div className="w-6 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">T</div>
+                      <div className="w-12 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">T</div>
                       Theater Mode
                     </li>
                   </ul>
