@@ -16,6 +16,7 @@ import {
   FolderOpen,
   Save,
   RotateCcw,
+  Info,
   EyeOff,
   Timer,
   Tv,
@@ -1156,6 +1157,13 @@ export default function App() {
               </button>
               {Object.keys(annotations).length > 0 && (
                 <div className="flex gap-1">
+                  <button 
+                    onClick={() => setShowTutorial(true)}
+                    className="p-2 text-on-surface-variant hover:bg-surface-variant/5 hover:text-primary rounded-xl transition-all border border-transparent"
+                    title="Show Tutorial"
+                  >
+                    <Info size={20} />
+                  </button>
                   <button 
                     onClick={downloadCSV}
                     className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all border border-transparent hover:border-primary/20"
