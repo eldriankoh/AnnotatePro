@@ -664,8 +664,8 @@ export default function App() {
       if (e.key === 'Enter') {
         e.preventDefault();
         handleApply();
-      } else if (e.key === 'M' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
-        // Secret toggle for metrics
+      } else if (e.key === 'A' && e.shiftKey) {
+        // Simple shortcut for analytics
         e.preventDefault();
         setActiveView(prev => prev === 'labeling' ? 'metrics' : 'labeling');
       } else if (e.key === 'ArrowLeft' && currentImage > 1) {
@@ -1384,6 +1384,10 @@ export default function App() {
                     <li className="flex items-center gap-3 text-sm font-medium">
                       <div className="w-12 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">Z / X</div>
                       Zoom In / Out
+                    </li>
+                    <li className="flex items-center gap-3 text-sm font-medium">
+                      <div className="w-12 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">Shift A</div>
+                      Toggle Analytics
                     </li>
                     <li className="flex items-center gap-3 text-sm font-medium">
                       <div className="w-12 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">T</div>
