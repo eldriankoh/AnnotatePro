@@ -11,7 +11,9 @@ import {
   PointerSensor, 
   useSensor, 
   useSensors, 
-  type DragEndEvent 
+  type DragEndEvent,
+  DragOverlay,
+  defaultDropAnimationSideEffects
 } from '@dnd-kit/core';
 import { 
   arrayMove, 
@@ -139,7 +141,8 @@ function SortableCategoryItem({
   cat, 
   index, 
   localCategories, 
-  setLocalCategories 
+  setLocalCategories,
+  isOverlay = false
 }: any) {
   const {
     attributes,
@@ -156,18 +159,13 @@ function SortableCategoryItem({
     zIndex: isDragging ? 50 : 0
   };
 
-  return (
-    <motion.div 
-      ref={setNodeRef}
-      style={style}
-      layout
-      key={cat.id}
-      className={`bg-white border border-outline-variant p-6 rounded-[32px] flex items-center gap-6 group hover:border-primary/30 transition-all shadow-sm shadow-black/[0.02] ${isDragging ? 'opacity-50 scale-95 shadow-2xl border-primary' : ''}`}
+  const content = (
+    <div 
+      className={`bg-white border border-outline-variant p-6 rounded-[32px] flex items-center gap-6 group hover:border-primary/40 transition-all shadow-sm shadow-black/[0.02] ${isDragging && !isOverlay ? 'opacity-0' : ''} ${isOverlay ? 'shadow-2xl border-primary scale-[1.02] cursor-grabbing ring-4 ring-primary/10' : ''}`}
     >
       <div 
-        {...attributes} 
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing text-outline opacity-20 hover:opacity-100 transition-opacity p-2 -m-2"
+        {...(isOverlay ? {} : { ...attributes, ...listeners })}
+        className="cursor-grab active:cursor-grabbing text-on-surface-variant/20 hover:text-primary transition-colors p-2 -m-2"
       >
         <GripVertical size={20} />
       </div>
@@ -267,6 +265,18 @@ function SortableCategoryItem({
           </button>
         </div>
       </div>
+    </div>
+  );
+
+  if (isOverlay) return content;
+
+  return (
+    <motion.div 
+      ref={setNodeRef}
+      style={style}
+      layout
+    >
+      {content}
     </motion.div>
   );
 }
@@ -322,64 +332,100 @@ export default function App() {
   const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  const [isAutoLoading, setIsAutoLoading] = useState(false);
-  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
-
-  const handleDragOver = (e: DragEvent) => {
+  const handleImageDragOver = (e: any) => {
     e.preventDefault();
     setIsDraggingFiles(true);
   };
 
-  const handleDragLeave = (e: DragEvent) => {
+  const handleImageDragLeave = (e: any) => {
     e.preventDefault();
     setIsDraggingFiles(false);
   };
 
-  const handleDrop = async (e: DragEvent) => {
+  const handleImageDrop = async (e: any) => {
     e.preventDefault();
     setIsDraggingFiles(false);
     
-    const files = Array.from(e.dataTransfer.files) as File[];
-    if (files.length > 0) {
-      // Check if it's CSV or Image
-      const imageFiles = files.filter(f => /\.(jpe?g|png|webp|tiff|bmp|svg)$/i.test(f.name));
-      const csvFiles = files.filter(f => f.name.endsWith('.csv'));
+    try {
+      const files = await getAllFiles(e.dataTransfer);
+      if (files.length > 0) {
+        const imageFiles = files.filter(f => /\.(jpe?g|png|webp|tiff|bmp|svg)$/i.test(f.name));
 
-      if (imageFiles.length > 0) {
-        // Sort naturally
-        imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-        setImageFiles(prev => {
-          const combined = [...prev, ...imageFiles];
-          setTotalImages(combined.length);
-          if (currentImage === 0) setCurrentImage(1);
-          return combined;
-        });
-      }
-
-      if (csvFiles.length > 0) {
-        if (activeView === 'metrics') {
-          // If in metrics, determine if it's ground truth or user data (this is tricky, let's just use generic logic)
-          // For now, let's assume first one is ground truth if not present, others are user data
-          for (const file of csvFiles) {
-            if (!groundTruth) {
-              Papa.parse(file, {
-                header: true,
-                skipEmptyLines: true,
-                complete: (results) => {
-                  setGroundTruth(results.data);
-                  calculateStats(results.data);
-                }
-              });
-            } else {
-              // Import as user data
-              const dummyEvent = { target: { files: [file] } } as any;
-              handleImportAnnotations(dummyEvent);
-            }
+        if (imageFiles.length > 0) {
+          const firstItem = e.dataTransfer.items?.[0];
+          const entry = firstItem?.webkitGetAsEntry?.();
+          if (entry) {
+            const newPath = `/${entry.name}`;
+            setDatasetPath(newPath);
+            localStorage.setItem('dataset_path', newPath);
           }
+
+          imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+          setImageFiles(prev => {
+            const combined = [...prev, ...imageFiles];
+            setTotalImages(combined.length);
+            if (currentImage === 0) setCurrentImage(1);
+            return combined;
+          });
         }
       }
+    } catch (err) {
+      console.error("Drop error:", err);
     }
   };
+
+  const [isAutoLoading, setIsAutoLoading] = useState(false);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [dragCounter, setDragCounter] = useState(0); // For identifying global drag enter/leave reliably
+  const [isDraggingGT, setIsDraggingGT] = useState(false);
+  const [isDraggingUser, setIsDraggingUser] = useState(false);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  const getAllFiles = async (dataTransfer: DataTransfer): Promise<File[]> => {
+    const files: File[] = [];
+    const items = dataTransfer.items;
+    
+    if (!items) {
+      return Array.from(dataTransfer.files || []);
+    }
+
+    const entries: any[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry();
+      if (entry) entries.push(entry);
+    }
+
+    const traverse = async (entry: any) => {
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve, reject) => entry.file(resolve, reject));
+        files.push(file);
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const readBatch = (): Promise<any[]> => {
+          return new Promise((resolve, reject) => {
+            reader.readEntries(resolve, reject);
+          });
+        };
+
+        let batch = await readBatch();
+        while (batch.length > 0) {
+          for (const child of batch) {
+            await traverse(child);
+          }
+          batch = await readBatch();
+        }
+      }
+    };
+
+    for (const entry of entries) {
+      await traverse(entry);
+    }
+
+    return files;
+  };
+
+  // Removed global window drag-and-drop listeners to localize ingestion to the image section.
+
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -388,7 +434,12 @@ export default function App() {
     })
   );
 
+  const handleDragStart = (event: any) => {
+    setActiveDragId(event.active.id);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragId(null);
     const { active, over } = event;
     if (active.id !== over?.id) {
       setLocalCategories((items: any) => {
@@ -1051,6 +1102,8 @@ export default function App() {
         className="hidden"
       />
       
+      {/* Global overlays removed, now localized to image section */}
+      
       <div className="flex flex-1 overflow-hidden relative">
         {/* Main Workspace Canvas */}
         <main className="flex-1 flex flex-col relative overflow-hidden bg-background">
@@ -1061,41 +1114,41 @@ export default function App() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="flex-1 overflow-y-auto p-12"
+                className="flex-1 overflow-y-auto p-4 md:p-12"
               >
-                <div className="max-w-6xl mx-auto space-y-10">
-                  <div className="flex items-center justify-between">
+                <div className="max-w-6xl mx-auto space-y-6 md:space-y-10">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <button 
                       onClick={() => setActiveView('labeling')}
-                      className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors text-[10px] font-black uppercase tracking-widest"
+                      className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors text-[10px] font-black uppercase tracking-widest w-fit"
                     >
                       <ChevronLeft size={16} />
                       Back to Labeling
                     </button>
-                    <div className="flex gap-4">
+                    <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
                       <button 
                         onClick={() => csvInputRef.current?.click()}
-                        className="bg-primary/5 p-4 pl-6 rounded-3xl border border-primary/10 flex items-center gap-4 hover:bg-primary/10 transition-all active:scale-95 group"
+                        className="bg-primary/5 p-3 md:p-4 pl-4 md:pl-6 rounded-2xl md:rounded-3xl border border-primary/10 flex items-center justify-between md:justify-start gap-4 hover:bg-primary/10 transition-all active:scale-95 group"
                       >
                         <div className="flex flex-col text-left">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-primary">Ground Truth</span>
-                          <span className="text-[10px] font-bold text-on-surface-variant opacity-60">SELECT CSV</span>
+                          <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-primary">Ground Truth</span>
+                          <span className="text-[9px] md:text-[10px] font-bold text-on-surface-variant opacity-60">SELECT CSV</span>
                         </div>
                         <div className="p-2 bg-white rounded-xl shadow-sm text-primary group-hover:bg-primary group-hover:text-white transition-colors">
-                          <Upload size={20} />
+                          <Upload className="w-[18px] h-[18px] md:w-[20px] md:h-[20px]" />
                         </div>
                       </button>
 
                       <button 
                         onClick={() => document.getElementById('import-annots')?.click()}
-                        className="bg-purple-50 p-4 pl-6 rounded-3xl border border-purple-200 flex items-center gap-4 hover:bg-purple-100 transition-all active:scale-95 group"
+                        className="bg-purple-50 p-3 md:p-4 pl-4 md:pl-6 rounded-2xl md:rounded-3xl border border-purple-200 flex items-center justify-between md:justify-start gap-4 hover:bg-purple-100 transition-all active:scale-95 group"
                       >
                         <div className="flex flex-col text-left">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-purple-600">User Data</span>
-                          <span className="text-[10px] font-bold text-on-surface-variant opacity-60">SELECT CSV(s)</span>
+                          <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-purple-600">User Data</span>
+                          <span className="text-[9px] md:text-[10px] font-bold text-on-surface-variant opacity-60">SELECT CSV(S)</span>
                         </div>
                         <div className="p-2 bg-white rounded-xl shadow-sm text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                          <FileText size={20} />
+                          <FileText className="w-[18px] h-[18px] md:w-[20px] md:h-[20px]" />
                         </div>
                         <input 
                           id="import-annots"
@@ -1109,30 +1162,79 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div>
-                    <h2 className="text-3xl font-black tracking-tight text-on-surface uppercase mb-2">Performance Analytics</h2>
-                    <p className="text-on-surface-variant text-sm">Validate extraction accuracy against ground truth datasets</p>
+                  <div className="space-y-1 md:space-y-2">
+                    <h2 className="text-xl md:text-3xl font-black tracking-tight text-on-surface uppercase leading-none">Performance Analytics</h2>
+                    <p className="text-on-surface-variant text-xs md:text-sm opacity-60">Validate extraction accuracy against ground truth datasets</p>
                   </div>
 
                   {!metricsResults ? (
-                    <div 
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      className={`border-2 border-dashed border-outline-variant rounded-[40px] p-20 text-center flex flex-col items-center gap-6 transition-all ${isDraggingFiles ? 'bg-primary/5 border-primary scale-[0.99]' : ''}`}
-                    >
-                      <div className="w-20 h-20 bg-background rounded-full flex items-center justify-center text-outline">
-                        <BarChart2 size={40} />
+                    <div className="grid grid-cols-2 gap-8 items-stretch">
+                      {/* Ground Truth Drop Zone */}
+                      <div 
+                        onDragOver={(e) => { e.preventDefault(); setIsDraggingGT(true); }}
+                        onDragLeave={() => setIsDraggingGT(false)}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          setIsDraggingGT(false);
+                          const files = await getAllFiles(e.dataTransfer);
+                          const csvFile = files.find(f => f.name.endsWith('.csv'));
+                          if (csvFile) {
+                            Papa.parse(csvFile, {
+                              header: true,
+                              skipEmptyLines: true,
+                              complete: (results) => {
+                                setGroundTruth(results.data);
+                                calculateStats(results.data);
+                              }
+                            });
+                          }
+                        }}
+                        className={`border-2 border-dashed rounded-[40px] p-12 text-center flex flex-col items-center justify-center gap-6 transition-all group ${isDraggingGT ? 'bg-primary/5 border-primary scale-[1.02] border-solid' : 'border-outline-variant hover:border-primary/50'}`}
+                      >
+                        <div className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${isDraggingGT ? 'bg-primary text-white' : 'bg-background text-primary opacity-60 group-hover:opacity-100'}`}>
+                          <Upload size={32} />
+                        </div>
+                        <div className="space-y-2">
+                          <h3 className={`font-black uppercase tracking-widest text-xs ${isDraggingGT ? 'text-primary' : 'text-on-surface-variant'}`}>Ground Truth</h3>
+                          <p className="text-[11px] font-bold text-on-surface-variant/60 max-w-[200px] mx-auto leading-relaxed">
+                            Drop the <b>Official Labels CSV</b> here to set the baseline
+                          </p>
+                        </div>
+                        <label className="mt-2 px-6 py-3 bg-white text-on-surface border border-outline-variant rounded-2xl font-bold text-[10px] uppercase tracking-widest cursor-pointer hover:border-primary hover:text-primary transition-all">
+                          Browse GT
+                          <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+                        </label>
                       </div>
-                      <div className="max-w-xs transition-colors">
-                        <h3 className="font-bold text-lg mb-2">Ready for Analysis</h3>
-                        <p className="text-sm text-on-surface-variant leading-relaxed">
-                          1. Upload the <b>Ground Truth CSV</b><br/>
-                          2. Upload <b>User CSV Export(s)</b> (Optional, defaults to current session)<br/>
-                          <code className="block mt-4 p-3 bg-background rounded-xl text-[10px] font-mono break-all leading-normal text-left">
-                            filename,{localCategories.map((c: any) => c.key).join(',')}
-                          </code>
-                        </p>
+
+                      {/* User Data Drop Zone */}
+                      <div 
+                        onDragOver={(e) => { e.preventDefault(); setIsDraggingUser(true); }}
+                        onDragLeave={() => setIsDraggingUser(false)}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          setIsDraggingUser(false);
+                          const files = await getAllFiles(e.dataTransfer);
+                          const csvFiles = files.filter(f => f.name.endsWith('.csv'));
+                          if (csvFiles.length > 0) {
+                            const dummyEvent = { target: { files: csvFiles } } as any;
+                            handleImportAnnotations(dummyEvent);
+                          }
+                        }}
+                        className={`border-2 border-dashed rounded-[40px] p-12 text-center flex flex-col items-center justify-center gap-6 transition-all group ${isDraggingUser ? 'bg-purple-50 border-purple-500 scale-[1.02] border-solid' : 'border-outline-variant hover:border-purple-300'}`}
+                      >
+                        <div className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${isDraggingUser ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-600 opacity-60 group-hover:opacity-100'}`}>
+                          <FileText size={32} />
+                        </div>
+                        <div className="space-y-2">
+                          <h3 className={`font-black uppercase tracking-widest text-xs ${isDraggingUser ? 'text-purple-600' : 'text-on-surface-variant'}`}>User Annotations</h3>
+                          <p className="text-[11px] font-bold text-on-surface-variant/60 max-w-[200px] mx-auto leading-relaxed">
+                            Drop one or more <b>Annotator CSVs</b> to compare performance
+                          </p>
+                        </div>
+                        <label className="mt-2 px-6 py-3 bg-white text-on-surface border border-outline-variant rounded-2xl font-bold text-[10px] uppercase tracking-widest cursor-pointer hover:border-purple-600 hover:text-purple-600 transition-all">
+                          Browse User(s)
+                          <input type="file" accept=".csv" multiple onChange={handleImportAnnotations} className="hidden" />
+                        </label>
                       </div>
                     </div>
                   ) : (
@@ -1282,6 +1384,7 @@ export default function App() {
                       <DndContext 
                         sensors={sensors}
                         collisionDetection={closestCenter}
+                        onDragStart={handleDragStart}
                         onDragEnd={handleDragEnd}
                       >
                         <SortableContext 
@@ -1298,6 +1401,25 @@ export default function App() {
                             />
                           ))}
                         </SortableContext>
+                        <DragOverlay dropAnimation={{
+                          sideEffects: defaultDropAnimationSideEffects({
+                            styles: {
+                              active: {
+                                opacity: '0.5',
+                              },
+                            },
+                          }),
+                        }}>
+                          {activeDragId ? (
+                            <SortableCategoryItem 
+                              cat={localCategories.find((c: any) => c.id === activeDragId)}
+                              index={localCategories.findIndex((c: any) => c.id === activeDragId)}
+                              localCategories={localCategories}
+                              setLocalCategories={setLocalCategories}
+                              isOverlay
+                            />
+                          ) : null}
+                        </DragOverlay>
                       </DndContext>
                     </div>
                   </section>
@@ -1312,23 +1434,25 @@ export default function App() {
                 className="flex-1 flex flex-col overflow-hidden"
               >
                 {/* Header Dashboard Area */}
-                <div className={`transition-all duration-500 ease-in-out border-b border-outline-variant bg-white/70 backdrop-blur-xl ${isTheaterMode ? 'max-h-0 opacity-0' : 'max-h-[300px] py-8'}`}>
-                  <div className="px-margin-edge flex items-center justify-between">
-                    <div className="flex items-center gap-12">
+                <div className={`transition-all duration-500 ease-in-out border-b border-outline-variant bg-white/70 backdrop-blur-xl overflow-hidden ${isTheaterMode ? 'max-h-0 opacity-0 border-b-0' : 'max-h-[300px] py-4 md:py-8'}`}>
+                  <div className="px-4 md:px-margin-edge flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6">
+                    <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-12">
                       <div className="flex flex-col">
-                        <div className="flex items-center gap-2 text-on-surface-variant mb-2 group">
-                          <FolderOpen size={14} className="group-hover:text-primary transition-colors" />
-                          <div className="flex items-center group/path">
-                            <span className="text-[10px] font-black tracking-widest uppercase mr-2 opacity-50">Dataset Path:</span>
-                            <span className={`text-[10px] font-black tracking-widest uppercase truncate max-w-[240px] ${imageFiles.length === 0 && datasetPath !== 'Blip-C Empty' ? 'text-orange-500' : 'text-on-surface'}`}>
+                        <div className="flex items-center gap-2 text-on-surface-variant mb-1 md:mb-2 group">
+                          <FolderOpen size={14} className="group-hover:text-primary transition-colors shrink-0" />
+                          <div className="flex items-center group/path overflow-hidden">
+                            <span className="text-[10px] font-black tracking-widest uppercase mr-2 opacity-50 whitespace-nowrap hidden sm:inline">Dataset Path:</span>
+                            <span className={`text-[10px] font-black tracking-widest uppercase truncate max-w-[180px] sm:max-w-[240px] ${imageFiles.length === 0 && datasetPath !== 'Blip-C Empty' ? 'text-orange-500' : 'text-on-surface'}`}>
                               {datasetPath || 'NOT SELECTED'}
-                              {imageFiles.length === 0 && datasetPath && datasetPath !== 'Blip-C Empty' && ' (RECONNECT NEEDED)'}
+                              {imageFiles.length === 0 && datasetPath && datasetPath !== 'Blip-C Empty' && ' (RECONNECT)'}
                             </span>
                             <button 
                               onClick={handleSelectDirectory}
-                              className="ml-4 px-3 py-1 rounded-full border border-outline-variant/50 hover:border-primary hover:text-primary transition-colors text-[9px] font-black tracking-tight"
+                              className="ml-2 md:ml-4 px-2 md:px-3 py-1 rounded-full border border-outline-variant/50 hover:border-primary hover:text-primary transition-colors text-[8px] md:text-[9px] font-black tracking-tight whitespace-nowrap"
                             >
-                              {imageFiles.length === 0 && datasetPath && datasetPath !== 'Blip-C Empty' ? 'RECONNECT SOURCE' : 'CHANGE BROWSE'}
+                              {imageFiles.length === 0 && datasetPath && datasetPath !== 'Blip-C Empty' ? (
+                                <span className="flex items-center gap-1"><RotateCcw size={10} /> RECONNECT</span>
+                              ) : 'BROWSE'}
                             </button>
                           </div>
                         </div>
@@ -1350,11 +1474,11 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col items-start border-l border-outline-variant/20 pl-12">
-                        <span className="text-[11px] font-black text-primary uppercase tracking-[0.2em] mb-1.5">
+                      <div className="flex flex-col items-start border-l border-outline-variant/20 pl-6 md:pl-12">
+                        <span className="text-[10px] md:text-[11px] font-black text-primary uppercase tracking-[0.1em] md:tracking-[0.2em] mb-1 md:mb-1.5 whitespace-nowrap">
                           {totalImages === 0 ? 0 : currentImage} / {totalImages} COMPLETE
                         </span>
-                        <div className="w-56 h-1.5 bg-outline-variant/20 rounded-full overflow-hidden shadow-inner">
+                        <div className="w-40 sm:w-56 h-1 md:h-1.5 bg-outline-variant/20 rounded-full overflow-hidden shadow-inner">
                           <motion.div 
                             initial={{ width: 0 }}
                             animate={{ width: `${totalImages === 0 ? 0 : Math.min(100, (currentImage / totalImages) * 100)}%` }}
@@ -1364,7 +1488,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-3 md:gap-6 justify-end">
                       <button 
                         onClick={() => {
                           if (activeView !== 'settings') {
@@ -1374,10 +1498,10 @@ export default function App() {
                             setActiveView('labeling');
                           }
                         }}
-                        className={`p-3 rounded-2xl transition-all border ${activeView === 'settings' ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white text-on-surface-variant border-outline-variant hover:border-primary hover:text-primary shadow-sm hover:shadow-md'}`}
+                        className={`p-2.5 md:p-3 rounded-xl md:rounded-2xl transition-all border ${activeView === 'settings' ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white text-on-surface-variant border-outline-variant hover:border-primary hover:text-primary shadow-sm hover:shadow-md'}`}
                         title="Configuration Settings"
                       >
-                        <Settings size={20} className={activeView === 'settings' ? 'animate-spin-slow' : ''} />
+                        <Settings className={`w-[18px] h-[18px] md:w-[20px] md:h-[20px] transition-all ${activeView === 'settings' ? 'animate-spin-slow' : ''}`} />
                       </button>
                     </div>
                   </div>
@@ -1386,27 +1510,39 @@ export default function App() {
                 <div className={`flex-1 min-h-0 flex items-center justify-center transition-all duration-500 ease-in-out ${isTheaterMode ? 'p-0' : 'p-margin-edge'}`}>
                   <div 
                     ref={canvasRef}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group transition-all duration-500 ${isFullScreen || isTheaterMode ? 'rounded-none border-none' : ''} ${isDraggingFiles ? 'bg-primary/5 border-primary scale-[0.99] border-dashed border-2' : ''}`}
+                    onDragOver={handleImageDragOver}
+                    onDragLeave={handleImageDragLeave}
+                    onDrop={handleImageDrop}
+                    className={`relative w-full h-full bg-white border shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group transition-all duration-500 ${isFullScreen || isTheaterMode ? 'rounded-none border-none' : ''} ${isDraggingFiles ? 'border-primary ring-8 ring-primary/5' : 'border-outline-variant'}`}
                   >
-                    {/* File Drop Indicator */}
+                    {/* Local Image Drop Overlay */}
                     <AnimatePresence>
                       {isDraggingFiles && (
                         <motion.div 
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
-                          className="absolute inset-0 z-30 bg-primary/20 backdrop-blur-sm flex flex-col items-center justify-center gap-4 border-4 border-dashed border-primary"
+                          className="absolute inset-0 z-50 bg-white/80 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none"
                         >
-                          <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-primary shadow-2xl">
-                            <Upload size={40} />
-                          </div>
-                          <div className="text-center text-primary">
-                            <p className="text-xl font-black uppercase tracking-widest">Drop to upload</p>
-                            <p className="text-xs font-bold opacity-60">Images or CSV Annotations</p>
-                          </div>
+                          <motion.div 
+                            initial={{ scale: 0.9, opacity: 0, y: 10 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            className="flex flex-col items-center gap-6"
+                          >
+                            <div className="w-20 h-20 bg-primary text-white rounded-3xl flex items-center justify-center shadow-2xl shadow-primary/30 transform rotate-6 scale-110">
+                              <Upload size={40} strokeWidth={2.5} />
+                            </div>
+                            <div className="text-center space-y-1">
+                              <h2 className="text-xl font-black tracking-tighter text-on-surface uppercase">Import Gallery</h2>
+                              <p className="text-on-surface-variant font-bold text-[10px] tracking-[0.3em] opacity-40 uppercase">Release to Upload</p>
+                            </div>
+                          </motion.div>
+                          
+                          {/* Minimalist Corner Accents */}
+                          <div className="absolute top-12 left-12 w-8 h-8 border-t-2 border-l-2 border-primary/30 rounded-tl-lg" />
+                          <div className="absolute top-12 right-12 w-8 h-8 border-t-2 border-r-2 border-primary/30 rounded-tr-lg" />
+                          <div className="absolute bottom-12 left-12 w-8 h-8 border-b-2 border-l-2 border-primary/30 rounded-bl-lg" />
+                          <div className="absolute bottom-12 right-12 w-8 h-8 border-b-2 border-r-2 border-primary/30 rounded-br-lg" />
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -1601,13 +1737,20 @@ export default function App() {
 
         {/* Right Labeling Panel */}
         {activeView === 'labeling' && (
-          <aside className={`w-[480px] bg-white border-l border-outline-variant flex flex-col shrink-0 p-6 transition-all duration-500 ease-in-out ${isTheaterMode ? '-mr-[480px] opacity-0' : ''}`} 
-            style={{ opacity: isFinished ? 0.3 : (isTheaterMode ? 0 : 1), pointerEvents: isFinished || isTheaterMode ? 'none' : 'auto' }}
+          <aside className={`transition-all duration-500 ease-in-out bg-white border-outline-variant flex flex-col shrink-0 overflow-hidden ${
+            isTheaterMode 
+              ? 'w-0 p-0 opacity-0 border-l-0' 
+              : 'w-72 md:w-80 lg:w-96 xl:w-[480px] p-6 border-l opacity-100'
+          }`} 
+            style={{ 
+              opacity: isFinished ? 0.3 : (isTheaterMode ? 0 : 1), 
+              pointerEvents: isFinished || isTheaterMode ? 'none' : 'auto' 
+            }}
           >
-          <div className="mb-6 flex justify-between items-start">
-            <div>
-              <h3 className="text-lg font-bold tracking-tight text-on-surface">Categories</h3>
-              <p className="text-sm text-on-surface-variant mt-1 italic">Assign label to image</p>
+          <div className="mb-4 md:mb-6 flex justify-between items-start">
+            <div className="min-w-0">
+              <h3 className="text-base md:text-lg font-bold tracking-tight text-on-surface truncate">Categories</h3>
+              <p className="text-xs md:text-sm text-on-surface-variant mt-1 italic truncate opacity-60">Assign label to image</p>
             </div>
             <div className="flex gap-2">
               <button 
@@ -1678,29 +1821,29 @@ export default function App() {
 
               <div 
                 ref={categoriesRef}
-                className="flex-1 space-y-4 overflow-y-auto px-2 py-4 no-scrollbar"
+                className="flex-1 space-y-3 md:space-y-4 overflow-y-auto px-2 py-2 md:py-4 no-scrollbar"
               >
                 {localCategories.map((cat, index) => (
                   <button
                     key={cat.id}
                     onClick={() => toggleCategory(cat.id)}
-                    className={`w-[calc(100%-0.5rem)] mx-auto text-left py-7 px-6 rounded-[28px] border transition-all relative group flex justify-between items-center ${
+                    className={`w-[calc(100%-0.5rem)] mx-auto text-left py-4 md:py-6 lg:py-7 px-4 md:px-6 rounded-[24px] md:rounded-[28px] border transition-all relative group flex justify-between items-center ${
                       selectedCategories.includes(cat.id) 
                         ? `${cat.bg} ${cat.border} shadow-xl scale-[1.02] ring-4 ${cat.ring}` 
                         : `bg-background border-transparent hover:bg-white hover:border-outline-variant/30 transition-all duration-300`
                     }`}
                     style={selectedCategories.includes(cat.id) ? { boxShadow: `0 20px 25px -5px ${cat.accent}20, 0 8px 10px -6px ${cat.accent}20` } : {}}
                   >
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1 md:gap-1.5">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className={`text-[10px] font-black w-4 h-4 rounded-md flex items-center justify-center transition-colors ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-outline-variant/10 text-on-surface-variant'}`}>
+                        <span className={`text-[9px] md:text-[10px] font-black w-4 h-4 rounded-md flex items-center justify-center transition-colors ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-outline-variant/10 text-on-surface-variant'}`}>
                           {index + 1}
                         </span>
-                        <span className={`text-[11px] font-bold uppercase tracking-widest ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
+                        <span className={`text-[10px] md:text-[11px] font-bold uppercase tracking-widest truncate ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
                           {cat.name}
                         </span>
                       </div>
-                      <span className={`text-base font-medium transition-colors leading-tight ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
+                      <span className={`text-sm md:text-base font-medium transition-colors leading-tight line-clamp-2 ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
                         {cat.desc}
                       </span>
                     </div>
@@ -1731,46 +1874,46 @@ export default function App() {
             </AnimatePresence>
           </div>
 
-          <div className="mt-8 pt-8 border-t border-outline-variant space-y-6">
+          <div className="mt-4 md:mt-8 pt-4 md:pt-8 border-t border-outline-variant space-y-4 md:space-y-6">
             <div className="flex flex-col gap-2">
-              <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">Active Classes ({selectedCategories.length})</span>
+              <span className="text-[10px] md:text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">Active Classes ({selectedCategories.length})</span>
               <div className="flex flex-wrap gap-1.5">
                 {selectedCategories.length > 0 ? (
                   selectedCategories.map(id => {
                     const cat = localCategories.find(c => c.id === id);
                     if (id === -1) {
                       return (
-                        <span key={id} className="text-[10px] font-bold bg-red-50 text-red-500 px-2 py-0.5 rounded-full border border-red-200">
+                        <span key={id} className="text-[9px] md:text-[10px] font-bold bg-red-50 text-red-500 px-2 py-0.5 rounded-full border border-red-200">
                           No Label
                         </span>
                       );
                     }
                     return (
-                      <span key={id} className={`text-[10px] font-bold ${cat?.bg} ${cat?.color} px-2 py-0.5 rounded-full border ${cat?.border} opacity-80`}>
+                      <span key={id} className={`text-[9px] md:text-[10px] font-bold ${cat?.bg} ${cat?.color} px-2 py-0.5 rounded-full border ${cat?.border} opacity-80`}>
                         {cat?.name}
                       </span>
                     );
                   })
                 ) : (
-                  <span className="text-sm font-bold text-outline opacity-40">NONE</span>
+                  <span className="text-xs md:text-sm font-bold text-outline opacity-40 uppercase tracking-widest">None</span>
                 )}
               </div>
             </div>
             
-            <div className="flex flex-col gap-3">
-              <div className="flex gap-3">
+            <div className="flex flex-col gap-2 md:gap-3">
+              <div className="flex gap-2 md:gap-3">
                 <button 
                   onClick={() => currentImage > 1 && setCurrentImage(prev => prev - 1)}
                   disabled={currentImage <= 1}
-                  className="px-4 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] border border-outline-variant text-on-surface-variant hover:bg-background transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
+                  className="px-4 py-3 md:py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] md:text-[11px] border border-outline-variant text-on-surface-variant hover:bg-background transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
                   title="Go back to previous image"
                 >
-                  <ChevronLeft size={18} />
+                  <ChevronLeft className="w-4 h-4 md:w-[18px] md:h-[18px]" />
                 </button>
                 <button 
                   onClick={handleNoLabel}
                   disabled={!sessionStartTime}
-                  className="flex-1 py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-500 transition-all active:scale-95 whitespace-nowrap disabled:opacity-30 disabled:pointer-events-none"
+                  className="flex-1 py-3 md:py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] md:text-[11px] border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-500 transition-all active:scale-95 whitespace-nowrap disabled:opacity-30 disabled:pointer-events-none"
                 >
                   No Label
                 </button>
@@ -1778,7 +1921,7 @@ export default function App() {
               <button 
                 onClick={handleApply}
                 disabled={!sessionStartTime || selectedCategories.length === 0}
-                className={`w-full py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] transition-all ${
+                className={`w-full py-3 md:py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[10px] md:text-[11px] transition-all ${
                   (selectedCategories.length > 0 && sessionStartTime)
                     ? 'bg-primary text-white shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 active:translate-y-0.5' 
                     : 'bg-outline-variant/30 text-outline cursor-not-allowed opacity-50'
