@@ -100,14 +100,17 @@ AnnotatePro tracks high-fidelity timing data for every image to analyze labeling
 
 ### 🎓 Integrated Tutorial
 ![Tutorial Overlay](public/tutorial_screen.png)
+
 An interactive onboarding system that pauses the session timer to ensure users understand the keyboard shortcuts and workflow without penalizing their performance metrics.
 
 ### 🖊️ Labeling Screen
 ![Labeling Interface](public/labeling_screen.png)
+
 The primary workspace featuring the Precision View Engine. It provides immediate visual feedback for selected labels and real-time session stats.
 
 ### 🏁 Session Completion
 ![Ending Screen](public/ending_screen.png)
+
 The final stage of the labeling workflow where users can review aggregate metrics, inspect their performance (labels/min), and download the finalized dataset.
 
 ---
