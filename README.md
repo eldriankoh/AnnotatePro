@@ -53,6 +53,12 @@ The labeling interface is fully extensible via the **Workspace Settings**, allow
 - **Expanded Workspace**: Optimized analytics layout (6xl width) providing maximum screen real estate for deep data inspection.
 - **Efficiency Feedback**: Instant calculation of labeling throughput (labels per minute) and dataset coverage.
 
+### 🖱️ Drag-and-Drop Workflow
+AnnotatePro prioritizes speed with modern interaction patterns:
+- **Instant Upload**: Drag images or CSV ground truth files directly onto the workspace for immediate session initialization.
+- **Reorderable Schema**: In Workspace Settings, drag category tiles to reorder them, which automatically updates the 1-N keyboard mappings.
+- **Visual Feedback**: Real-time drop-zone highlighting ensures a clear mental model of data ingestion.
+
 ### ⚙️ Label Modifications
 ![Workspace Settings](public/settings_view.png)
 The Workspace Configuration menu allows for rapid adaptation of the labeling environment:

@@ -3,7 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef, type ReactNode, type UIEvent, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, type DragEvent, type ReactNode, type UIEvent, type ChangeEvent } from 'react';
+import { 
+  DndContext, 
+  closestCenter, 
+  KeyboardSensor, 
+  PointerSensor, 
+  useSensor, 
+  useSensors, 
+  type DragEndEvent 
+} from '@dnd-kit/core';
+import { 
+  arrayMove, 
+  SortableContext, 
+  sortableKeyboardCoordinates, 
+  verticalListSortingStrategy, 
+  useSortable 
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { 
   ChevronLeft, 
   ChevronRight,
@@ -118,6 +135,142 @@ function ElegantSelect({
   );
 }
 
+function SortableCategoryItem({ 
+  cat, 
+  index, 
+  localCategories, 
+  setLocalCategories 
+}: any) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: cat.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 0
+  };
+
+  return (
+    <motion.div 
+      ref={setNodeRef}
+      style={style}
+      layout
+      key={cat.id}
+      className={`bg-white border border-outline-variant p-6 rounded-[32px] flex items-center gap-6 group hover:border-primary/30 transition-all shadow-sm shadow-black/[0.02] ${isDragging ? 'opacity-50 scale-95 shadow-2xl border-primary' : ''}`}
+    >
+      <div 
+        {...attributes} 
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-outline opacity-20 hover:opacity-100 transition-opacity p-2 -m-2"
+      >
+        <GripVertical size={20} />
+      </div>
+      
+      <div className="flex-1 grid grid-cols-12 gap-6 items-center">
+        <div className="col-span-3 space-y-1.5">
+          <label className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant opacity-40">Label Name</label>
+          <input 
+            type="text" 
+            value={cat.name}
+            onChange={(e) => {
+              const next = [...localCategories];
+              next[index] = { ...cat, name: e.target.value };
+              setLocalCategories(next);
+            }}
+            className="w-full bg-background border border-transparent hover:border-outline-variant focus:border-primary px-3 py-2 rounded-xl text-sm font-bold transition-all outline-none"
+          />
+        </div>
+
+        <div className="col-span-4 space-y-1.5">
+          <label className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant opacity-40">Description</label>
+          <input 
+            type="text" 
+            value={cat.desc}
+            onChange={(e) => {
+              const next = [...localCategories];
+              next[index] = { ...cat, desc: e.target.value };
+              setLocalCategories(next);
+            }}
+            className="w-full bg-background border border-transparent hover:border-outline-variant focus:border-primary px-3 py-2 rounded-xl text-sm font-medium transition-all outline-none"
+          />
+        </div>
+
+        <div className="col-span-2">
+          <ElegantSelect 
+            label="Theme Color"
+            value={cat.accent}
+            options={THEME_COLORS.map(t => ({ 
+              value: t.accent, 
+              label: t.name, 
+              color: t.accent,
+              accent: t.accent,
+              name: t.name
+            }))}
+            onChange={(val) => {
+              const theme = THEME_COLORS.find(t => t.accent === val);
+              if (theme) {
+                const next = [...localCategories];
+                next[index] = { ...cat, ...theme };
+                setLocalCategories(next);
+              }
+            }}
+            renderOption={(opt) => (
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: opt.accent }} />
+                <span>{opt.name}</span>
+              </div>
+            )}
+          />
+        </div>
+
+        <div className="col-span-2">
+          <ElegantSelect 
+            label="Icon"
+            value={AVAILABLE_ICONS.find(i => i.icon === cat.icon)?.name || 'Box'}
+            options={AVAILABLE_ICONS.map(i => ({ value: i.name, label: i.name, icon: i.icon }))}
+            onChange={(val) => {
+              const found = AVAILABLE_ICONS.find(i => i.name === val);
+              if (found) {
+                const next = [...localCategories];
+                next[index] = { ...cat, icon: found.icon };
+                setLocalCategories(next);
+              }
+            }}
+            renderOption={(opt) => {
+              const Icon = opt.icon;
+              return (
+                <div className="flex items-center gap-2">
+                  <Icon size={14} className="opacity-60" />
+                  <span>{opt.label}</span>
+                </div>
+              );
+            }}
+          />
+        </div>
+
+        <div className="col-span-1 flex justify-end">
+          <button 
+            onClick={() => {
+              if (localCategories.length > 1) {
+                setLocalCategories(localCategories.filter((_, i) => i !== index));
+              }
+            }}
+            className="p-3 text-on-surface-variant hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
+          >
+            <Trash2 size={18} />
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<'labeling' | 'metrics' | 'settings'>('labeling');
   const [settingsBackup, setSettingsBackup] = useState<any[] | null>(null);
@@ -170,6 +323,81 @@ export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const [isAutoLoading, setIsAutoLoading] = useState(false);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+
+  const handleDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFiles(true);
+  };
+
+  const handleDragLeave = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFiles(false);
+  };
+
+  const handleDrop = async (e: DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFiles(false);
+    
+    const files = Array.from(e.dataTransfer.files) as File[];
+    if (files.length > 0) {
+      // Check if it's CSV or Image
+      const imageFiles = files.filter(f => /\.(jpe?g|png|webp|tiff|bmp|svg)$/i.test(f.name));
+      const csvFiles = files.filter(f => f.name.endsWith('.csv'));
+
+      if (imageFiles.length > 0) {
+        // Sort naturally
+        imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        setImageFiles(prev => {
+          const combined = [...prev, ...imageFiles];
+          setTotalImages(combined.length);
+          if (currentImage === 0) setCurrentImage(1);
+          return combined;
+        });
+      }
+
+      if (csvFiles.length > 0) {
+        if (activeView === 'metrics') {
+          // If in metrics, determine if it's ground truth or user data (this is tricky, let's just use generic logic)
+          // For now, let's assume first one is ground truth if not present, others are user data
+          for (const file of csvFiles) {
+            if (!groundTruth) {
+              Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                  setGroundTruth(results.data);
+                  calculateStats(results.data);
+                }
+              });
+            } else {
+              // Import as user data
+              const dummyEvent = { target: { files: [file] } } as any;
+              handleImportAnnotations(dummyEvent);
+            }
+          }
+        }
+      }
+    }
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (active.id !== over?.id) {
+      setLocalCategories((items: any) => {
+        const oldIndex = items.findIndex((item: any) => item.id === active.id);
+        const newIndex = items.findIndex((item: any) => item.id === over?.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
 
   const attemptAutoLoad = async () => {
     if (imageFiles.length > 0) return;
@@ -887,7 +1115,12 @@ export default function App() {
                   </div>
 
                   {!metricsResults ? (
-                    <div className="border-2 border-dashed border-outline-variant rounded-[40px] p-20 text-center flex flex-col items-center gap-6">
+                    <div 
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`border-2 border-dashed border-outline-variant rounded-[40px] p-20 text-center flex flex-col items-center gap-6 transition-all ${isDraggingFiles ? 'bg-primary/5 border-primary scale-[0.99]' : ''}`}
+                    >
                       <div className="w-20 h-20 bg-background rounded-full flex items-center justify-center text-outline">
                         <BarChart2 size={40} />
                       </div>
@@ -1046,113 +1279,26 @@ export default function App() {
                     </div>
 
                     <div className="grid gap-4">
-                      {localCategories.map((cat: any, index: number) => (
-                        <motion.div 
-                          layout
-                          key={cat.id}
-                          className="bg-white border border-outline-variant p-6 rounded-[32px] flex items-center gap-6 group hover:border-primary/30 transition-all shadow-sm shadow-black/[0.02]"
+                      <DndContext 
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEnd}
+                      >
+                        <SortableContext 
+                          items={localCategories.map((c: any) => c.id)}
+                          strategy={verticalListSortingStrategy}
                         >
-                          <div className="cursor-grab active:cursor-grabbing text-outline opacity-20 hover:opacity-100 transition-opacity">
-                            <GripVertical size={20} />
-                          </div>
-                          
-                          <div className="flex-1 grid grid-cols-12 gap-6 items-center">
-                            <div className="col-span-3 space-y-1.5">
-                              <label className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant opacity-40">Label Name</label>
-                              <input 
-                                type="text" 
-                                value={cat.name}
-                                onChange={(e) => {
-                                  const next = [...localCategories];
-                                  next[index] = { ...cat, name: e.target.value };
-                                  setLocalCategories(next);
-                                }}
-                                className="w-full bg-background border border-transparent hover:border-outline-variant focus:border-primary px-3 py-2 rounded-xl text-sm font-bold transition-all outline-none"
-                              />
-                            </div>
-
-                            <div className="col-span-4 space-y-1.5">
-                              <label className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant opacity-40">Description</label>
-                              <input 
-                                type="text" 
-                                value={cat.desc}
-                                onChange={(e) => {
-                                  const next = [...localCategories];
-                                  next[index] = { ...cat, desc: e.target.value };
-                                  setLocalCategories(next);
-                                }}
-                                className="w-full bg-background border border-transparent hover:border-outline-variant focus:border-primary px-3 py-2 rounded-xl text-sm font-medium transition-all outline-none"
-                              />
-                            </div>
-
-                            <div className="col-span-2">
-                              <ElegantSelect 
-                                label="Theme Color"
-                                value={cat.accent}
-                                options={THEME_COLORS.map(t => ({ 
-                                  value: t.accent, 
-                                  label: t.name, 
-                                  color: t.accent,
-                                  accent: t.accent,
-                                  name: t.name
-                                }))}
-                                onChange={(val) => {
-                                  const theme = THEME_COLORS.find(t => t.accent === val);
-                                  if (theme) {
-                                    const next = [...localCategories];
-                                    next[index] = { ...cat, ...theme };
-                                    setLocalCategories(next);
-                                  }
-                                }}
-                                renderOption={(opt) => (
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: opt.accent }} />
-                                    <span>{opt.name}</span>
-                                  </div>
-                                )}
-                              />
-                            </div>
-
-                            <div className="col-span-2">
-                              <ElegantSelect 
-                                label="Icon"
-                                value={AVAILABLE_ICONS.find(i => i.icon === cat.icon)?.name || 'Box'}
-                                options={AVAILABLE_ICONS.map(i => ({ value: i.name, label: i.name, icon: i.icon }))}
-                                onChange={(val) => {
-                                  const found = AVAILABLE_ICONS.find(i => i.name === val);
-                                  if (found) {
-                                    const next = [...localCategories];
-                                    next[index] = { ...cat, icon: found.icon };
-                                    setLocalCategories(next);
-                                  }
-                                }}
-                                renderOption={(opt) => {
-                                  const Icon = opt.icon;
-                                  return (
-                                    <div className="flex items-center gap-2">
-                                      <Icon size={14} className="opacity-60" />
-                                      <span>{opt.label}</span>
-                                    </div>
-                                  );
-                                }}
-                              />
-                            </div>
-
-                            <div className="col-span-1 flex justify-end">
-                              <button 
-                                onClick={() => {
-                                  if (localCategories.length > 1) {
-                                    setLocalCategories(localCategories.filter((_, i) => i !== index));
-                                  }
-                                }}
-                                className="p-3 text-on-surface-variant hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
+                          {localCategories.map((cat: any, index: number) => (
+                            <SortableCategoryItem 
+                              key={cat.id}
+                              cat={cat}
+                              index={index}
+                              localCategories={localCategories}
+                              setLocalCategories={setLocalCategories}
+                            />
+                          ))}
+                        </SortableContext>
+                      </DndContext>
                     </div>
                   </section>
                 </div>
@@ -1240,8 +1386,30 @@ export default function App() {
                 <div className={`flex-1 min-h-0 flex items-center justify-center transition-all duration-500 ease-in-out ${isTheaterMode ? 'p-0' : 'p-margin-edge'}`}>
                   <div 
                     ref={canvasRef}
-                    className={`relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group transition-all duration-500 ${isFullScreen || isTheaterMode ? 'rounded-none border-none' : ''}`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`relative w-full h-full bg-white border border-outline-variant shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group transition-all duration-500 ${isFullScreen || isTheaterMode ? 'rounded-none border-none' : ''} ${isDraggingFiles ? 'bg-primary/5 border-primary scale-[0.99] border-dashed border-2' : ''}`}
                   >
+                    {/* File Drop Indicator */}
+                    <AnimatePresence>
+                      {isDraggingFiles && (
+                        <motion.div 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="absolute inset-0 z-30 bg-primary/20 backdrop-blur-sm flex flex-col items-center justify-center gap-4 border-4 border-dashed border-primary"
+                        >
+                          <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-primary shadow-2xl">
+                            <Upload size={40} />
+                          </div>
+                          <div className="text-center text-primary">
+                            <p className="text-xl font-black uppercase tracking-widest">Drop to upload</p>
+                            <p className="text-xs font-bold opacity-60">Images or CSV Annotations</p>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                     {/* View Guard (Image Blocking) */}
                     <AnimatePresence>
                       {!sessionStartTime && !isFinished && totalImages > 0 && (
