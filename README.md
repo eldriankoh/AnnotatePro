@@ -55,9 +55,15 @@ The labeling interface is fully extensible via the **Workspace Settings**, allow
 
 ### 🖱️ Drag-and-Drop Workflow
 AnnotatePro prioritizes speed with modern interaction patterns:
-- **Instant Upload**: Drag images or CSV ground truth files directly onto the workspace for immediate session initialization.
+- **Intuitive Dashboard**: The main interface now explicitly guides users to drag and drop files directly into the workspace for instant session initialization.
+- **Instant Upload**: Drag images or CSV ground truth files anywhere on the screen to begin labeling immediately.
 - **Reorderable Schema**: In Workspace Settings, drag category tiles to reorder them, which automatically updates the 1-N keyboard mappings.
-- **Visual Feedback**: Real-time drop-zone highlighting ensures a clear mental model of data ingestion.
+- **Visual Feedback**: Professional-grade drop-zone overlays ensure a clear mental model of data ingestion.
+
+### 🎭 Elegant View Transitions
+The workspace utilizes advanced motion design to provide a seamless context-switching experience:
+- **Non-Linear Navigation**: Switching between Metrics, Settings, and the Labeling Canvas uses staggered scale-and-fade animations that maintain user orientation.
+- **Frictionless Feedback**: Interactive elements provide subtle weight-shifting and hover transitions to make high-volume sessions feel tactile and responsive.
 
 ### ⚙️ Label Modifications
 ![Workspace Settings](public/settings_view.png)
@@ -157,6 +163,9 @@ Maximize efficiency with dedicated keyboard mappings:
 
 ## 📋 Changelog (Recent Updates)
 
+- **Elegant Layout Transitions**: Completely overhauled the transition logic between Workspace, Settings, and Metrics for a smoother, high-end feel.
+- **Drag & Drop Visibility**: Added explicit on-screen instructions for Drag & Drop support to improve accessibility for new users.
+- **Refined Category Rail**: Optimized the sidebar with a cleaner visual hierarchy and improved scrolling performance.
 - **Integrated Tutorial System**: Added a persistent 'i' icon in the header for anytime-access to onboarding instructions.
 - **Smart Timer Management**: The session timer now automatically pauses when the tutorial is open and resumes when closed, ensuring timing accuracy.
 - **Expanded Analytics View**: Removed sidebars in the analytics view to provide a 50% increase in usable space for data visualization.
