@@ -24,15 +24,113 @@ import {
   BarChart2,
   Upload,
   AlertCircle,
-  Trophy
+  Trophy,
+  Settings,
+  Plus,
+  Trash2,
+  GripVertical,
+  FileText,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import Papa from 'papaparse';
-import { CATEGORIES } from './constants';
+import { THEME_COLORS, AVAILABLE_ICONS, CATEGORIES as DEFAULT_CATEGORIES } from './constants';
+
+function ElegantSelect({ 
+  value, 
+  options, 
+  onChange, 
+  label,
+  renderOption 
+}: { 
+  value: any, 
+  options: any[], 
+  onChange: (val: any) => void,
+  label: string,
+  renderOption: (opt: any) => ReactNode
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(opt => opt.value === value) || options[0];
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <label className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant opacity-40 mb-1.5 block">
+        {label}
+      </label>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-background border border-transparent hover:border-outline-variant focus:border-primary px-3 py-2 rounded-xl text-xs font-bold transition-all outline-none flex items-center justify-between group"
+      >
+        <div className="flex items-center gap-2 overflow-hidden">
+          {renderOption(selectedOption)}
+        </div>
+        <ChevronDown 
+          size={14} 
+          className={`text-on-surface-variant transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} 
+        />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 4, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            className="absolute z-50 top-full left-0 w-full min-w-[160px] bg-white border border-outline-variant shadow-xl rounded-2xl overflow-hidden p-1.5"
+          >
+            <div className="max-h-[240px] overflow-y-auto no-scrollbar py-1">
+              {options.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(opt.value);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left mb-0.5 last:mb-0 ${
+                    value === opt.value 
+                      ? 'bg-primary/5 text-primary' 
+                      : 'hover:bg-background text-on-surface'
+                  }`}
+                >
+                  {renderOption(opt)}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'labeling' | 'metrics'>('labeling');
+  const [activeView, setActiveView] = useState<'labeling' | 'metrics' | 'settings'>('labeling');
+  const [settingsBackup, setSettingsBackup] = useState<any[] | null>(null);
+  const [localCategories, setLocalCategories] = useState(() => {
+    try {
+      const saved = localStorage.getItem('categories_v1');
+      return saved ? JSON.parse(saved).map((cat: any) => ({
+        ...cat,
+        icon: AVAILABLE_ICONS.find(i => i.name === cat.iconName)?.icon || AVAILABLE_ICONS[0].icon
+      })) : DEFAULT_CATEGORIES;
+    } catch { return DEFAULT_CATEGORIES; }
+  });
+
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [annotations, setAnnotations] = useState<Record<number, number[]>>(() => {
     try {
@@ -129,7 +227,15 @@ export default function App() {
     if (!showTutorial) {
       localStorage.setItem('tutorial_completed', 'true');
     }
-  }, [annotations, annotationMetrics, accumulatedTimes, currentImage, showTutorial]);
+    
+    // Save categories (stripping component icons for serialization)
+    const serializedCats = localCategories.map((cat: any) => ({
+      ...cat,
+      iconName: AVAILABLE_ICONS.find(i => i.icon === cat.icon)?.name || 'Box',
+      icon: undefined
+    }));
+    localStorage.setItem('categories_v1', JSON.stringify(serializedCats));
+  }, [annotations, annotationMetrics, accumulatedTimes, currentImage, showTutorial, localCategories]);
 
   // Ensure currentImage stays in bounds when image list changes
   useEffect(() => {
@@ -193,7 +299,7 @@ export default function App() {
               const fileIdx = idx + 1; // Assuming sequential for now if image files not loaded, 
               // but better to match filename if available
               const labels: number[] = [];
-              CATEGORIES.forEach(cat => {
+              localCategories.forEach(cat => {
                 const val = row[cat.key];
                 if (val === '1' || val === 1 || String(val).toLowerCase() === 'true') {
                   labels.push(cat.id);
@@ -244,7 +350,7 @@ export default function App() {
     let aggregateMeanF1 = 0;
     let totalValidatedSamples = 0;
 
-    const aggregateClassStats = CATEGORIES.reduce((acc: any, cat) => {
+    const aggregateClassStats = localCategories.reduce((acc: any, cat: any) => {
       acc[cat.key] = { tp: 0, fp: 0, fn: 0, tn: 0 };
       return acc;
     }, {});
@@ -278,8 +384,7 @@ export default function App() {
         totalValidatedSamples++;
 
         let isImageCorrect = true;
-
-        CATEGORIES.forEach(cat => {
+        localCategories.forEach(cat => {
           const isSelectedByUser = userLabels.includes(cat.id);
           const gtValue = row[cat.key];
           const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
@@ -303,7 +408,7 @@ export default function App() {
       aggregateAccuracy += (totalSamples === 0 ? 0 : totalCorrect / totalSamples);
     });
 
-    const categoryMetrics = CATEGORIES.map(cat => {
+    const categoryMetrics = localCategories.map((cat: any) => {
       const { tp, fp, fn } = aggregateClassStats[cat.key];
       const precision = tp + fp === 0 ? 0 : tp / (tp + fp);
       const recall = tp + fn === 0 ? 0 : tp / (tp + fn);
@@ -587,38 +692,38 @@ export default function App() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
     const filename = `annotations_${timestamp}.csv`;
     
-    // Header matches Truth: filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
-    // We add StartTime, EndTime, and DurationSeconds for analysis
-    const headers = ['filename', ...CATEGORIES.map(c => c.key), 'StartTime', 'EndTime', 'DurationSeconds'];
-    let csvContent = headers.join(',') + '\n';
-
-    Object.entries(annotations).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([id, ids]) => {
-      const index = Number(id);
-      const file = imageFiles[index - 1];
-      const fileName = file ? file.name : `image_${id}`;
-      
-      const metrics = annotationMetrics[index];
-      const startTime = metrics?.start || '';
-      
-      // Calculate real-time duration: recorded + accumulated + current session if it's the active image
-      let totalDuration = metrics?.duration || 0;
-      let finalEndTime = metrics?.end || '';
-      
-      // Add any accumulated time that hasn't been committed to annotationMetrics yet
-      const accumulated = (accumulatedTimes[index] || 0) / 1000;
-      totalDuration += accumulated;
-      
-      // If this is the current image and timer is running, add the live elapsed time
-      if (index === currentImage && sessionStartTime) {
-        const liveElapsed = (Date.now() - sessionStartTime) / 1000;
-        totalDuration += liveElapsed;
-        finalEndTime = new Date().toISOString();
-      }
-
-      const rowData = [fileName];
-      CATEGORIES.forEach(cat => {
-        rowData.push((ids as number[]).includes(cat.id) ? '1' : '0');
-      });
+      // Header matches Truth: filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
+      // We add StartTime, EndTime, and DurationSeconds for analysis
+      const headers = ['filename', ...localCategories.map(c => c.key), 'StartTime', 'EndTime', 'DurationSeconds'];
+      let csvContent = headers.join(',') + '\n';
+  
+      Object.entries(annotations).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([id, ids]) => {
+        const index = Number(id);
+        const file = imageFiles[index - 1];
+        const fileName = file ? file.name : `image_${id}`;
+        
+        const metrics = annotationMetrics[index];
+        const startTime = metrics?.start || '';
+        
+        // Calculate real-time duration: recorded + accumulated + current session if it's the active image
+        let totalDuration = metrics?.duration || 0;
+        let finalEndTime = metrics?.end || '';
+        
+        // Add any accumulated time that hasn't been committed to annotationMetrics yet
+        const accumulated = (accumulatedTimes[index] || 0) / 1000;
+        totalDuration += accumulated;
+        
+        // If this is the current image and timer is running, add the live elapsed time
+        if (index === currentImage && sessionStartTime) {
+          const liveElapsed = (Date.now() - sessionStartTime) / 1000;
+          totalDuration += liveElapsed;
+          finalEndTime = new Date().toISOString();
+        }
+  
+        const rowData = [fileName];
+        localCategories.forEach(cat => {
+          rowData.push((ids as number[]).includes(cat.id) ? '1' : '0');
+        });
 
       // Append metrics
       rowData.push(startTime);
@@ -680,8 +785,8 @@ export default function App() {
       } else {
         // Number keys 1-9 for categories
         const num = parseInt(e.key);
-        if (!isNaN(num) && num > 0 && num <= CATEGORIES.length) {
-          const category = CATEGORIES[num - 1];
+        if (!isNaN(num) && num > 0 && num <= localCategories.length) {
+          const category = localCategories[num - 1];
           toggleCategory(category.id);
         }
       }
@@ -792,7 +897,7 @@ export default function App() {
                           1. Upload the <b>Ground Truth CSV</b><br/>
                           2. Upload <b>User CSV Export(s)</b> (Optional, defaults to current session)<br/>
                           <code className="block mt-4 p-3 bg-background rounded-xl text-[10px] font-mono break-all leading-normal text-left">
-                            filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
+                            filename,{localCategories.map((c: any) => c.key).join(',')}
                           </code>
                         </p>
                       </div>
@@ -865,6 +970,193 @@ export default function App() {
                   )}
                 </div>
               </motion.div>
+            ) : activeView === 'settings' ? (
+              <motion.div
+                key="settings-view"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                className="flex-1 overflow-y-auto p-12"
+              >
+                <div className="max-w-4xl mx-auto space-y-12">
+                  <header className="flex justify-between items-end">
+                    <div>
+                      <h2 className="text-4xl font-black tracking-tighter text-on-surface uppercase mb-3">Workspace Configuration</h2>
+                      <p className="text-on-surface-variant font-medium">Customize categories, labels, and visual tokens</p>
+                    </div>
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => {
+                          if (settingsBackup) {
+                            setLocalCategories(settingsBackup);
+                          }
+                          setActiveView('labeling');
+                        }}
+                        className="px-6 py-3 bg-white text-on-surface-variant border border-outline-variant rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:border-red-500 hover:text-red-500 transition-all"
+                      >
+                        Cancel Changes
+                      </button>
+                      <button 
+                        onClick={() => setActiveView('labeling')}
+                        className="px-6 py-3 bg-primary text-white rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:shadow-lg hover:shadow-primary/20 transition-all"
+                      >
+                        Save & Return
+                      </button>
+                    </div>
+                  </header>
+
+                  <section className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-on-surface-variant opacity-60">Labeling Categories</h3>
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => {
+                            const next = localCategories.map((cat: any) => {
+                              const randomTheme = THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)];
+                              return { ...cat, ...randomTheme };
+                            });
+                            setLocalCategories(next);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl hover:bg-indigo-100 transition-all text-[10px] font-black uppercase"
+                        >
+                          <Zap size={14} className="fill-current" />
+                          Randomize Colors
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const newId = Math.max(0, ...localCategories.map((c: any) => c.id)) + 1;
+                            setLocalCategories([
+                              ...localCategories,
+                              {
+                                id: newId,
+                                key: `custom_${newId}`,
+                                name: 'New Category',
+                                desc: 'Brief description',
+                                ...THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)],
+                                icon: AVAILABLE_ICONS[0].icon
+                              }
+                            ]);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-primary/5 text-primary border border-primary/10 rounded-xl hover:bg-primary/10 transition-all text-[10px] font-black uppercase"
+                        >
+                          <Plus size={14} />
+                          Add Category
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4">
+                      {localCategories.map((cat: any, index: number) => (
+                        <motion.div 
+                          layout
+                          key={cat.id}
+                          className="bg-white border border-outline-variant p-6 rounded-[32px] flex items-center gap-6 group hover:border-primary/30 transition-all shadow-sm shadow-black/[0.02]"
+                        >
+                          <div className="cursor-grab active:cursor-grabbing text-outline opacity-20 hover:opacity-100 transition-opacity">
+                            <GripVertical size={20} />
+                          </div>
+                          
+                          <div className="flex-1 grid grid-cols-12 gap-6 items-center">
+                            <div className="col-span-3 space-y-1.5">
+                              <label className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant opacity-40">Label Name</label>
+                              <input 
+                                type="text" 
+                                value={cat.name}
+                                onChange={(e) => {
+                                  const next = [...localCategories];
+                                  next[index] = { ...cat, name: e.target.value };
+                                  setLocalCategories(next);
+                                }}
+                                className="w-full bg-background border border-transparent hover:border-outline-variant focus:border-primary px-3 py-2 rounded-xl text-sm font-bold transition-all outline-none"
+                              />
+                            </div>
+
+                            <div className="col-span-4 space-y-1.5">
+                              <label className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant opacity-40">Description</label>
+                              <input 
+                                type="text" 
+                                value={cat.desc}
+                                onChange={(e) => {
+                                  const next = [...localCategories];
+                                  next[index] = { ...cat, desc: e.target.value };
+                                  setLocalCategories(next);
+                                }}
+                                className="w-full bg-background border border-transparent hover:border-outline-variant focus:border-primary px-3 py-2 rounded-xl text-sm font-medium transition-all outline-none"
+                              />
+                            </div>
+
+                            <div className="col-span-2">
+                              <ElegantSelect 
+                                label="Theme Color"
+                                value={cat.accent}
+                                options={THEME_COLORS.map(t => ({ 
+                                  value: t.accent, 
+                                  label: t.name, 
+                                  color: t.accent,
+                                  accent: t.accent,
+                                  name: t.name
+                                }))}
+                                onChange={(val) => {
+                                  const theme = THEME_COLORS.find(t => t.accent === val);
+                                  if (theme) {
+                                    const next = [...localCategories];
+                                    next[index] = { ...cat, ...theme };
+                                    setLocalCategories(next);
+                                  }
+                                }}
+                                renderOption={(opt) => (
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: opt.accent }} />
+                                    <span>{opt.name}</span>
+                                  </div>
+                                )}
+                              />
+                            </div>
+
+                            <div className="col-span-2">
+                              <ElegantSelect 
+                                label="Icon"
+                                value={AVAILABLE_ICONS.find(i => i.icon === cat.icon)?.name || 'Box'}
+                                options={AVAILABLE_ICONS.map(i => ({ value: i.name, label: i.name, icon: i.icon }))}
+                                onChange={(val) => {
+                                  const found = AVAILABLE_ICONS.find(i => i.name === val);
+                                  if (found) {
+                                    const next = [...localCategories];
+                                    next[index] = { ...cat, icon: found.icon };
+                                    setLocalCategories(next);
+                                  }
+                                }}
+                                renderOption={(opt) => {
+                                  const Icon = opt.icon;
+                                  return (
+                                    <div className="flex items-center gap-2">
+                                      <Icon size={14} className="opacity-60" />
+                                      <span>{opt.label}</span>
+                                    </div>
+                                  );
+                                }}
+                              />
+                            </div>
+
+                            <div className="col-span-1 flex justify-end">
+                              <button 
+                                onClick={() => {
+                                  if (localCategories.length > 1) {
+                                    setLocalCategories(localCategories.filter((_, i) => i !== index));
+                                  }
+                                }}
+                                className="p-3 text-on-surface-variant hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </motion.div>
             ) : !isFinished ? (
               <motion.div 
                 key="workspace"
@@ -927,7 +1219,20 @@ export default function App() {
                     </div>
 
                     <div className="flex items-center gap-6">
-                      {/* Controls removed as requested */}
+                      <button 
+                        onClick={() => {
+                          if (activeView !== 'settings') {
+                            setSettingsBackup([...localCategories]);
+                            setActiveView('settings');
+                          } else {
+                            setActiveView('labeling');
+                          }
+                        }}
+                        className={`p-3 rounded-2xl transition-all border ${activeView === 'settings' ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white text-on-surface-variant border-outline-variant hover:border-primary hover:text-primary shadow-sm hover:shadow-md'}`}
+                        title="Configuration Settings"
+                      >
+                        <Settings size={20} className={activeView === 'settings' ? 'animate-spin-slow' : ''} />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1203,45 +1508,45 @@ export default function App() {
               )}
             </AnimatePresence>
 
-            <div 
-              ref={categoriesRef}
-              className="flex-1 space-y-4 overflow-y-auto px-2 py-4 no-scrollbar"
-            >
-              {CATEGORIES.map((cat, index) => (
-                <button
-                  key={cat.id}
-                  onClick={() => toggleCategory(cat.id)}
-                  className={`w-[calc(100%-0.5rem)] mx-auto text-left py-7 px-6 rounded-[28px] border transition-all relative group flex justify-between items-center ${
-                    selectedCategories.includes(cat.id) 
-                      ? `${cat.bg} ${cat.border} shadow-xl scale-[1.02] ring-4 ${cat.ring}` 
-                      : `bg-background border-transparent hover:bg-white hover:border-outline-variant/30 transition-all duration-300`
-                  }`}
-                  style={selectedCategories.includes(cat.id) ? { boxShadow: `0 20px 25px -5px ${cat.accent}20, 0 8px 10px -6px ${cat.accent}20` } : {}}
-                >
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className={`text-[10px] font-black w-4 h-4 rounded-md flex items-center justify-center transition-colors ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-outline-variant/10 text-on-surface-variant'}`}>
-                        {index + 1}
-                      </span>
-                      <span className={`text-[11px] font-bold uppercase tracking-widest ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
-                        {cat.name}
+              <div 
+                ref={categoriesRef}
+                className="flex-1 space-y-4 overflow-y-auto px-2 py-4 no-scrollbar"
+              >
+                {localCategories.map((cat, index) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => toggleCategory(cat.id)}
+                    className={`w-[calc(100%-0.5rem)] mx-auto text-left py-7 px-6 rounded-[28px] border transition-all relative group flex justify-between items-center ${
+                      selectedCategories.includes(cat.id) 
+                        ? `${cat.bg} ${cat.border} shadow-xl scale-[1.02] ring-4 ${cat.ring}` 
+                        : `bg-background border-transparent hover:bg-white hover:border-outline-variant/30 transition-all duration-300`
+                    }`}
+                    style={selectedCategories.includes(cat.id) ? { boxShadow: `0 20px 25px -5px ${cat.accent}20, 0 8px 10px -6px ${cat.accent}20` } : {}}
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className={`text-[10px] font-black w-4 h-4 rounded-md flex items-center justify-center transition-colors ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-outline-variant/10 text-on-surface-variant'}`}>
+                          {index + 1}
+                        </span>
+                        <span className={`text-[11px] font-bold uppercase tracking-widest ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
+                          {cat.name}
+                        </span>
+                      </div>
+                      <span className={`text-base font-medium transition-colors leading-tight ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
+                        {cat.desc}
                       </span>
                     </div>
-                    <span className={`text-base font-medium transition-colors leading-tight ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
-                      {cat.desc}
-                    </span>
-                  </div>
-                  {selectedCategories.includes(cat.id) && (
-                    <motion.div 
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="w-2 h-2 rounded-full shadow-lg"
-                      style={{ backgroundColor: cat.accent, boxShadow: `0 0 8px ${cat.accent}80` }}
-                    />
-                  )}
-                </button>
-              ))}
-            </div>
+                    {selectedCategories.includes(cat.id) && (
+                      <motion.div 
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="w-2 h-2 rounded-full shadow-lg"
+                        style={{ backgroundColor: cat.accent, boxShadow: `0 0 8px ${cat.accent}80` }}
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
 
             {/* Scroll Down Indicator */}
             <AnimatePresence>
@@ -1264,7 +1569,7 @@ export default function App() {
               <div className="flex flex-wrap gap-1.5">
                 {selectedCategories.length > 0 ? (
                   selectedCategories.map(id => {
-                    const cat = CATEGORIES.find(c => c.id === id);
+                    const cat = localCategories.find(c => c.id === id);
                     if (id === -1) {
                       return (
                         <span key={id} className="text-[10px] font-bold bg-red-50 text-red-500 px-2 py-0.5 rounded-full border border-red-200">
@@ -1384,9 +1689,9 @@ export default function App() {
               </div>
 
               <div className="mb-10">
-                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-4 text-center">Practice Arena (Try Keys 1-6)</h4>
+                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-4 text-center">Practice Arena</h4>
                 <div className="grid grid-cols-3 gap-3">
-                  {CATEGORIES.map((cat, idx) => {
+                  {localCategories.map((cat, idx) => {
                     const isSelected = selectedCategories.includes(cat.id);
                     return (
                       <button

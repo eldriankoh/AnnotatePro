@@ -25,6 +25,12 @@
   --spacing-sidebar: 72px;  
   --spacing-margin-edge: 32px;
   --spacing-gutter: 24px;
+
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  --animate-spin-slow: spin-slow 8s linear infinite;
 }
 
 @layer base {

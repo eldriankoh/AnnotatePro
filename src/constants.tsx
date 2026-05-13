@@ -4,8 +4,56 @@ import {
   FileText, 
   Layout, 
   Map as MapIcon, 
-  Swords 
+  Swords,
+  Box,
+  Circle,
+  Square,
+  Triangle,
+  Hexagon,
+  Diamond,
+  Target,
+  Zap,
+  Tag,
+  Flag,
+  Ghost,
+  Camera,
+  Layers
 } from 'lucide-react';
+
+export const THEME_COLORS = [
+  { name: 'Blue', accent: '#0071E3', color: 'text-primary', border: 'border-primary', bg: 'bg-primary/5', ring: 'ring-primary/20' },
+  { name: 'Purple', accent: '#9333ea', color: 'text-purple-600', border: 'border-purple-600', bg: 'bg-purple-50', ring: 'ring-purple-100' },
+  { name: 'Indigo', accent: '#4f46e5', color: 'text-indigo-600', border: 'border-indigo-600', bg: 'bg-indigo-50', ring: 'ring-indigo-100' },
+  { name: 'Pink', accent: '#ec4899', color: 'text-pink-500', border: 'border-pink-500', bg: 'bg-pink-50', ring: 'ring-pink-100' },
+  { name: 'Orange', accent: '#ea580c', color: 'text-orange-600', border: 'border-orange-600', bg: 'bg-orange-50', ring: 'ring-orange-100' },
+  { name: 'Emerald', accent: '#059669', color: 'text-emerald-600', border: 'border-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-100' },
+  { name: 'Red', accent: '#dc2626', color: 'text-red-600', border: 'border-red-600', bg: 'bg-red-50', ring: 'ring-red-100' },
+  { name: 'Amber', accent: '#d97706', color: 'text-amber-600', border: 'border-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-100' },
+  { name: 'Cyan', accent: '#0891b2', color: 'text-cyan-600', border: 'border-cyan-600', bg: 'bg-cyan-50', ring: 'ring-cyan-100' },
+  { name: 'Rose', accent: '#e11d48', color: 'text-rose-600', border: 'border-rose-600', bg: 'bg-rose-50', ring: 'ring-rose-100' },
+];
+
+export const AVAILABLE_ICONS = [
+  { name: 'Presentation', icon: Presentation },
+  { name: 'Monitor', icon: Monitor },
+  { name: 'File Text', icon: FileText },
+  { name: 'Layout', icon: Layout },
+  { name: 'Map', icon: MapIcon },
+  { name: 'Swords', icon: Swords },
+  { name: 'Box', icon: Box },
+  { name: 'Circle', icon: Circle },
+  { name: 'Square', icon: Square },
+  { name: 'Triangle', icon: Triangle },
+  { name: 'Hexagon', icon: Hexagon },
+  { name: 'Diamond', icon: Diamond },
+  { name: 'Target', icon: Target },
+  { name: 'Zap', icon: Zap },
+  { name: 'Tag', icon: Tag },
+  { name: 'Flag', icon: Flag },
+  { name: 'Ghost', icon: Ghost },
+  { name: 'Camera', icon: Camera },
+  { name: 'Layers', icon: Layers },
+];
 
 export const CATEGORIES = [
   { 
