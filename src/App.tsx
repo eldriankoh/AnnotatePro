@@ -49,7 +49,9 @@ import {
   Trash2,
   GripVertical,
   FileText,
-  Zap
+  Zap,
+  X,
+  Tags
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
@@ -61,16 +63,25 @@ function ElegantSelect({
   options, 
   onChange, 
   label,
-  renderOption 
+  renderIcon,
+  onOpenChange,
+  columns = 1
 }: { 
   value: any, 
   options: any[], 
   onChange: (val: any) => void,
   label: string,
-  renderOption: (opt: any) => ReactNode
+  renderIcon: (opt: any) => ReactNode,
+  onOpenChange?: (open: boolean) => void,
+  columns?: number
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onOpenChange?.(isOpen || isAnimating);
+  }, [isOpen, isAnimating, onOpenChange]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -95,7 +106,8 @@ function ElegantSelect({
         className="w-full bg-background border border-transparent hover:border-outline-variant focus:border-primary px-3 py-2 rounded-xl text-xs font-bold transition-all outline-none flex items-center justify-between group"
       >
         <div className="flex items-center gap-2 overflow-hidden">
-          {renderOption(selectedOption)}
+          {renderIcon(selectedOption)}
+          <span className="truncate">{selectedOption.label}</span>
         </div>
         <ChevronDown 
           size={14} 
@@ -103,15 +115,23 @@ function ElegantSelect({
         />
       </button>
 
-      <AnimatePresence>
+      <AnimatePresence 
+        onExitComplete={() => setIsAnimating(false)}
+      >
         {isOpen && (
           <motion.div
             initial={{ opacity: 0, y: 8, scale: 0.95 }}
             animate={{ opacity: 1, y: 4, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
-            className="absolute z-50 top-full left-0 w-full min-w-[160px] bg-white border border-outline-variant shadow-xl rounded-2xl overflow-hidden p-1.5"
+            onAnimationStart={() => setIsAnimating(true)}
+            className={`absolute z-50 top-full left-0 ${columns > 1 ? 'w-[280px] -left-[20px]' : 'w-full min-w-[160px]'} bg-white border border-outline-variant shadow-2xl rounded-2xl overflow-hidden p-1.5`}
           >
-            <div className="max-h-[240px] overflow-y-auto no-scrollbar py-1">
+            <div 
+              className={`max-h-[240px] overflow-y-auto pt-1 pb-1 px-1 no-scrollbar ${
+                columns > 1 ? 'grid gap-1' : 'flex flex-col'
+              }`}
+              style={columns > 1 ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : {}}
+            >
               {options.map((opt) => (
                 <button
                   key={opt.value}
@@ -120,13 +140,21 @@ function ElegantSelect({
                     onChange(opt.value);
                     setIsOpen(false);
                   }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left mb-0.5 last:mb-0 ${
+                  title={opt.label || ''}
+                  className={`flex items-center gap-2 rounded-xl transition-all text-left group overflow-hidden ${
+                    columns > 1 ? 'p-2 justify-center aspect-square' : 'p-2 w-full mb-0.5 last:mb-0'
+                  } ${
                     value === opt.value 
-                      ? 'bg-primary/5 text-primary' 
-                      : 'hover:bg-background text-on-surface'
+                      ? 'bg-primary/10 text-primary ring-2 ring-primary/20' 
+                      : 'hover:bg-slate-50 text-on-surface'
                   }`}
                 >
-                  {renderOption(opt)}
+                  <div className={`${columns > 1 ? 'scale-125' : ''}`}>
+                    {renderIcon(opt)}
+                  </div>
+                  {columns === 1 && (
+                    <span className="text-xs font-bold truncate">{opt.label}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -153,10 +181,13 @@ function SortableCategoryItem({
     isDragging
   } = useSortable({ id: cat.id });
 
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 50 : 0
+    zIndex: isDragging ? 50 : (isMenuOpen ? 100 : 0),
+    position: 'relative' as const
   };
 
   const content = (
@@ -203,6 +234,8 @@ function SortableCategoryItem({
           <ElegantSelect 
             label="Theme Color"
             value={cat.accent}
+            columns={5}
+            onOpenChange={setIsMenuOpen}
             options={THEME_COLORS.map(t => ({ 
               value: t.accent, 
               label: t.name, 
@@ -218,11 +251,8 @@ function SortableCategoryItem({
                 setLocalCategories(next);
               }
             }}
-            renderOption={(opt) => (
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: opt.accent }} />
-                <span>{opt.name}</span>
-              </div>
+            renderIcon={(opt) => (
+              <div className="w-4 h-4 rounded-full shadow-sm ring-1 ring-black/5" style={{ backgroundColor: opt.accent }} />
             )}
           />
         </div>
@@ -231,6 +261,8 @@ function SortableCategoryItem({
           <ElegantSelect 
             label="Icon"
             value={AVAILABLE_ICONS.find(i => i.icon === cat.icon)?.name || 'Box'}
+            columns={4}
+            onOpenChange={setIsMenuOpen}
             options={AVAILABLE_ICONS.map(i => ({ value: i.name, label: i.name, icon: i.icon }))}
             onChange={(val) => {
               const found = AVAILABLE_ICONS.find(i => i.name === val);
@@ -240,14 +272,9 @@ function SortableCategoryItem({
                 setLocalCategories(next);
               }
             }}
-            renderOption={(opt) => {
+            renderIcon={(opt) => {
               const Icon = opt.icon;
-              return (
-                <div className="flex items-center gap-2">
-                  <Icon size={14} className="opacity-60" />
-                  <span>{opt.label}</span>
-                </div>
-              );
+              return <Icon size={16} className="opacity-70" />;
             }}
           />
         </div>
@@ -284,14 +311,15 @@ function SortableCategoryItem({
 export default function App() {
   const [activeView, setActiveView] = useState<'labeling' | 'metrics' | 'settings'>('labeling');
   const [settingsBackup, setSettingsBackup] = useState<any[] | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<any[] | null>(null);
   const [localCategories, setLocalCategories] = useState(() => {
     try {
       const saved = localStorage.getItem('categories_v1');
       return saved ? JSON.parse(saved).map((cat: any) => ({
         ...cat,
         icon: AVAILABLE_ICONS.find(i => i.name === cat.iconName)?.icon || AVAILABLE_ICONS[0].icon
-      })) : DEFAULT_CATEGORIES;
-    } catch { return DEFAULT_CATEGORIES; }
+      })) : DEFAULT_CATEGORIES.map(c => ({...c}));
+    } catch { return DEFAULT_CATEGORIES.map(c => ({...c})); }
   });
 
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
@@ -324,6 +352,7 @@ export default function App() {
   const [isAtTutorialBottom, setIsAtTutorialBottom] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isTheaterMode, setIsTheaterMode] = useState(false);
+  const [isMobileLabelingOpen, setIsMobileLabelingOpen] = useState(false);
   const [totalImages, setTotalImages] = useState(0);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const prevImageRef = useRef(currentImage);
@@ -442,11 +471,19 @@ export default function App() {
     setActiveDragId(null);
     const { active, over } = event;
     if (active.id !== over?.id) {
-      setLocalCategories((items: any) => {
-        const oldIndex = items.findIndex((item: any) => item.id === active.id);
-        const newIndex = items.findIndex((item: any) => item.id === over?.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
+      if (activeView === 'settings') {
+        setSettingsDraft((items: any) => {
+          const oldIndex = items.findIndex((item: any) => item.id === active.id);
+          const newIndex = items.findIndex((item: any) => item.id === over?.id);
+          return arrayMove(items, oldIndex, newIndex);
+        });
+      } else {
+        setLocalCategories((items: any) => {
+          const oldIndex = items.findIndex((item: any) => item.id === active.id);
+          const newIndex = items.findIndex((item: any) => item.id === over?.id);
+          return arrayMove(items, oldIndex, newIndex);
+        });
+      }
     }
   };
 
@@ -1305,7 +1342,7 @@ export default function App() {
                   )}
                 </div>
               </motion.div>
-            ) : activeView === 'settings' ? (
+            ) : (activeView === 'settings' && settingsDraft) ? (
               <motion.div
                 key="settings-view"
                 initial={{ opacity: 0, scale: 0.98 }}
@@ -1322,9 +1359,7 @@ export default function App() {
                     <div className="flex gap-4">
                       <button 
                         onClick={() => {
-                          if (settingsBackup) {
-                            setLocalCategories(settingsBackup);
-                          }
+                          setSettingsDraft(null);
                           setActiveView('labeling');
                         }}
                         className="px-6 py-3 bg-white text-on-surface-variant border border-outline-variant rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:border-red-500 hover:text-red-500 transition-all"
@@ -1332,7 +1367,11 @@ export default function App() {
                         Cancel Changes
                       </button>
                       <button 
-                        onClick={() => setActiveView('labeling')}
+                        onClick={() => {
+                          setLocalCategories(settingsDraft);
+                          setSettingsDraft(null);
+                          setActiveView('labeling');
+                        }}
                         className="px-6 py-3 bg-primary text-white rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:shadow-lg hover:shadow-primary/20 transition-all"
                       >
                         Save & Return
@@ -1346,11 +1385,24 @@ export default function App() {
                       <div className="flex items-center gap-3">
                         <button 
                           onClick={() => {
-                            const next = localCategories.map((cat: any) => {
-                              const randomTheme = THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)];
-                              return { ...cat, ...randomTheme };
+                            setSettingsDraft(DEFAULT_CATEGORIES.map(cat => ({ ...cat })));
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-100 transition-all text-[10px] font-black uppercase"
+                        >
+                          <RotateCcw size={14} />
+                          Reset to Defaults
+                        </button>
+                        <button 
+                          onClick={() => {
+                            // Shuffle THEME_COLORS to ensure uniqueness where possible
+                            const shuffled = [...THEME_COLORS].sort(() => Math.random() - 0.5);
+                            const next = settingsDraft.map((cat: any, i: number) => {
+                              const theme = shuffled[i % shuffled.length];
+                              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                              const { name: _themeName, ...themeStyles } = theme; 
+                              return { ...cat, ...themeStyles };
                             });
-                            setLocalCategories(next);
+                            setSettingsDraft(next);
                           }}
                           className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl hover:bg-indigo-100 transition-all text-[10px] font-black uppercase"
                         >
@@ -1359,9 +1411,9 @@ export default function App() {
                         </button>
                         <button 
                           onClick={() => {
-                            const newId = Math.max(0, ...localCategories.map((c: any) => c.id)) + 1;
-                            setLocalCategories([
-                              ...localCategories,
+                            const newId = Math.max(0, ...settingsDraft.map((c: any) => c.id)) + 1;
+                            setSettingsDraft([
+                              ...settingsDraft,
                               {
                                 id: newId,
                                 key: `custom_${newId}`,
@@ -1388,16 +1440,16 @@ export default function App() {
                         onDragEnd={handleDragEnd}
                       >
                         <SortableContext 
-                          items={localCategories.map((c: any) => c.id)}
+                          items={settingsDraft.map((c: any) => c.id)}
                           strategy={verticalListSortingStrategy}
                         >
-                          {localCategories.map((cat: any, index: number) => (
+                          {settingsDraft.map((cat: any, index: number) => (
                             <SortableCategoryItem 
                               key={cat.id}
                               cat={cat}
                               index={index}
-                              localCategories={localCategories}
-                              setLocalCategories={setLocalCategories}
+                              localCategories={settingsDraft}
+                              setLocalCategories={setSettingsDraft}
                             />
                           ))}
                         </SortableContext>
@@ -1412,10 +1464,10 @@ export default function App() {
                         }}>
                           {activeDragId ? (
                             <SortableCategoryItem 
-                              cat={localCategories.find((c: any) => c.id === activeDragId)}
-                              index={localCategories.findIndex((c: any) => c.id === activeDragId)}
-                              localCategories={localCategories}
-                              setLocalCategories={setLocalCategories}
+                              cat={settingsDraft.find((c: any) => c.id === activeDragId)}
+                              index={settingsDraft.findIndex((c: any) => c.id === activeDragId)}
+                              localCategories={settingsDraft}
+                              setLocalCategories={setSettingsDraft}
                               isOverlay
                             />
                           ) : null}
@@ -1434,21 +1486,21 @@ export default function App() {
                 className="flex-1 flex flex-col overflow-hidden"
               >
                 {/* Header Dashboard Area */}
-                <div className={`transition-all duration-500 ease-in-out border-b border-outline-variant bg-white/70 backdrop-blur-xl overflow-hidden ${isTheaterMode ? 'max-h-0 opacity-0 border-b-0' : 'max-h-[300px] py-4 md:py-8'}`}>
-                  <div className="px-4 md:px-margin-edge flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6">
-                    <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-12">
-                      <div className="flex flex-col">
+                <div className={`transition-all duration-500 ease-in-out border-b border-outline-variant bg-white/70 backdrop-blur-xl overflow-hidden ${isTheaterMode ? 'max-h-0 opacity-0 border-b-0' : 'max-h-[300px] py-3 md:py-8'}`}>
+                  <div className="px-4 md:px-margin-edge flex items-center justify-between gap-4">
+                    <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-12 flex-1 min-w-0">
+                      <div className="hidden sm:flex flex-col overflow-hidden">
                         <div className="flex items-center gap-2 text-on-surface-variant mb-1 md:mb-2 group">
                           <FolderOpen size={14} className="group-hover:text-primary transition-colors shrink-0" />
                           <div className="flex items-center group/path overflow-hidden">
-                            <span className="text-[10px] font-black tracking-widest uppercase mr-2 opacity-50 whitespace-nowrap hidden sm:inline">Dataset Path:</span>
-                            <span className={`text-[10px] font-black tracking-widest uppercase truncate max-w-[180px] sm:max-w-[240px] ${imageFiles.length === 0 && datasetPath !== 'Blip-C Empty' ? 'text-orange-500' : 'text-on-surface'}`}>
+                            <span className="text-[10px] font-black tracking-widest uppercase mr-2 opacity-50 whitespace-nowrap hidden lg:inline">Dataset Path:</span>
+                            <span className={`text-[10px] font-black tracking-widest uppercase truncate max-w-[120px] sm:max-w-[240px] ${imageFiles.length === 0 && datasetPath !== 'Blip-C Empty' ? 'text-orange-500' : 'text-on-surface'}`}>
                               {datasetPath || 'NOT SELECTED'}
                               {imageFiles.length === 0 && datasetPath && datasetPath !== 'Blip-C Empty' && ' (RECONNECT)'}
                             </span>
                             <button 
                               onClick={handleSelectDirectory}
-                              className="ml-2 md:ml-4 px-2 md:px-3 py-1 rounded-full border border-outline-variant/50 hover:border-primary hover:text-primary transition-colors text-[8px] md:text-[9px] font-black tracking-tight whitespace-nowrap"
+                              className="ml-2 md:ml-4 px-2 md:px-3 py-1 rounded-full border border-outline-variant/50 hover:border-primary hover:text-primary transition-colors text-[8px] md:text-[9px] font-black tracking-tight whitespace-nowrap shrink-0"
                             >
                               {imageFiles.length === 0 && datasetPath && datasetPath !== 'Blip-C Empty' ? (
                                 <span className="flex items-center gap-1"><RotateCcw size={10} /> RECONNECT</span>
@@ -1474,11 +1526,11 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col items-start border-l border-outline-variant/20 pl-6 md:pl-12">
-                        <span className="text-[10px] md:text-[11px] font-black text-primary uppercase tracking-[0.1em] md:tracking-[0.2em] mb-1 md:mb-1.5 whitespace-nowrap">
+                      <div className="flex flex-col items-start md:border-l border-outline-variant/20 md:pl-12 min-w-0">
+                        <span className="text-[10px] md:text-[11px] font-black text-primary uppercase tracking-[0.1em] md:tracking-[0.2em] mb-1 md:mb-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
                           {totalImages === 0 ? 0 : currentImage} / {totalImages} COMPLETE
                         </span>
-                        <div className="w-40 sm:w-56 h-1 md:h-1.5 bg-outline-variant/20 rounded-full overflow-hidden shadow-inner">
+                        <div className="w-32 sm:w-56 h-1 md:h-1.5 bg-outline-variant/20 rounded-full overflow-hidden shadow-inner shrink-0">
                           <motion.div 
                             initial={{ width: 0 }}
                             animate={{ width: `${totalImages === 0 ? 0 : Math.min(100, (currentImage / totalImages) * 100)}%` }}
@@ -1488,11 +1540,12 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 md:gap-6 justify-end">
+                    <div className="flex items-center gap-2 md:gap-6 shrink-0">
                       <button 
                         onClick={() => {
                           if (activeView !== 'settings') {
                             setSettingsBackup([...localCategories]);
+                            setSettingsDraft([...localCategories.map(c => ({...c}))]);
                             setActiveView('settings');
                           } else {
                             setActiveView('labeling');
@@ -1515,6 +1568,22 @@ export default function App() {
                     onDrop={handleImageDrop}
                     className={`relative w-full h-full bg-white border shadow-sm rounded-[32px] overflow-hidden flex items-center justify-center group transition-all duration-500 ${isFullScreen || isTheaterMode ? 'rounded-none border-none' : ''} ${isDraggingFiles ? 'border-primary ring-8 ring-primary/5' : 'border-outline-variant'}`}
                   >
+                    {/* Mobile Labeling Trigger */}
+                    <div className="md:hidden absolute bottom-8 right-8 z-[60] flex flex-col gap-3">
+                      <button 
+                        onClick={() => setIsMobileLabelingOpen(true)}
+                        className="w-16 h-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform"
+                      >
+                        <Tags size={28} />
+                      </button>
+                      {sessionStartTime && (
+                        <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-primary/20 shadow-lg flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                          <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Active</span>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Local Image Drop Overlay */}
                     <AnimatePresence>
                       {isDraggingFiles && (
@@ -1737,10 +1806,10 @@ export default function App() {
 
         {/* Right Labeling Panel */}
         {activeView === 'labeling' && (
-          <aside className={`transition-all duration-500 ease-in-out bg-white border-outline-variant flex flex-col shrink-0 overflow-hidden ${
+          <aside className={`transition-all duration-500 ease-in-out bg-white border-outline-variant flex-col shrink-0 overflow-hidden ${
             isTheaterMode 
               ? 'w-0 p-0 opacity-0 border-l-0' 
-              : 'w-72 md:w-80 lg:w-96 xl:w-[480px] p-6 border-l opacity-100'
+              : 'hidden md:flex md:w-80 lg:w-96 xl:w-[480px] p-6 border-l opacity-100'
           }`} 
             style={{ 
               opacity: isFinished ? 0.3 : (isTheaterMode ? 0 : 1), 
@@ -1988,10 +2057,6 @@ export default function App() {
                       Zoom In / Out
                     </li>
                     <li className="flex items-center gap-3 text-sm font-medium">
-                      <div className="w-12 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">Shift A</div>
-                      Toggle Analytics
-                    </li>
-                    <li className="flex items-center gap-3 text-sm font-medium">
                       <div className="w-12 h-6 rounded-lg bg-white border border-outline-variant flex items-center justify-center text-[10px] shadow-sm">T</div>
                       Theater Mode
                     </li>
@@ -2089,7 +2154,142 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <MobileLabelingSheet 
+        isOpen={isMobileLabelingOpen}
+        onClose={() => setIsMobileLabelingOpen(false)}
+        localCategories={localCategories}
+        selectedCategories={selectedCategories}
+        toggleCategory={toggleCategory}
+        currentImage={currentImage}
+        setCurrentImage={setCurrentImage}
+        handleNoLabel={handleNoLabel}
+        handleApply={handleApply}
+        sessionStartTime={sessionStartTime}
+        handleTimerToggle={handleTimerToggle}
+        imageFiles={imageFiles}
+      />
     </div>
+  );
+}
+
+function MobileLabelingSheet({ 
+  isOpen, 
+  onClose, 
+  localCategories, 
+  selectedCategories, 
+  toggleCategory,
+  currentImage,
+  setCurrentImage,
+  handleNoLabel,
+  handleApply,
+  sessionStartTime,
+  handleTimerToggle,
+  imageFiles
+}: any) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] md:hidden"
+          />
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed inset-x-0 bottom-0 bg-white rounded-t-[40px] z-[1001] md:hidden flex flex-col max-h-[85vh] overflow-hidden shadow-2xl"
+          >
+            <div className="w-12 h-1.5 bg-outline-variant/30 rounded-full mx-auto my-4 shrink-0" />
+            
+            <div className="px-6 pb-4 flex justify-between items-center border-b border-outline-variant/10 shrink-0">
+              <div>
+                <h3 className="text-xl font-black tracking-tight text-on-surface">Categories</h3>
+                <p className="text-xs text-on-surface-variant opacity-60">Image {currentImage}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={handleTimerToggle}
+                  className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                    sessionStartTime ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200'
+                  }`}
+                >
+                  {sessionStartTime ? 'Active' : 'Paused'}
+                </button>
+                <button onClick={onClose} className="p-2 text-on-surface-variant"><X size={24} /></button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar">
+              {localCategories.map((cat: any, index: number) => (
+                <button
+                  key={cat.id}
+                  onClick={() => toggleCategory(cat.id)}
+                  className={`w-full text-left p-5 rounded-3xl border transition-all flex justify-between items-center ${
+                    selectedCategories.includes(cat.id) 
+                      ? `${cat.bg} ${cat.border} ring-2 ${cat.ring} scale-[0.98]` 
+                      : 'bg-background border-transparent'
+                  }`}
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black w-4 h-4 rounded flex items-center justify-center ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant opacity-40'}`}>
+                        {index + 1}
+                      </span>
+                      <span className={`text-xs font-black uppercase tracking-widest ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
+                        {cat.name}
+                      </span>
+                    </div>
+                    <span className="text-sm font-medium">{cat.desc}</span>
+                  </div>
+                  {selectedCategories.includes(cat.id) && (
+                    <CheckCircle2 size={24} className={cat.color} />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-6 pt-2 bg-white border-t border-outline-variant/10 space-y-4 shrink-0">
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => { currentImage > 1 && setCurrentImage(currentImage - 1); }}
+                  disabled={currentImage <= 1}
+                  className="p-4 rounded-3xl border border-outline-variant text-on-surface-variant disabled:opacity-20"
+                >
+                  <ChevronLeft size={24} />
+                </button>
+                <button 
+                  onClick={() => {
+                    handleNoLabel();
+                    onClose();
+                  }}
+                  className="flex-1 p-4 rounded-3xl border border-red-200 text-red-500 font-bold uppercase tracking-widest text-xs"
+                >
+                  No Label
+                </button>
+                <button 
+                  onClick={() => {
+                    handleApply();
+                    onClose();
+                  }}
+                  disabled={selectedCategories.length === 0 || !sessionStartTime}
+                  className={`flex-[2] p-4 rounded-3xl font-bold uppercase tracking-widest text-xs transition-all ${
+                    selectedCategories.length > 0 && sessionStartTime ? 'bg-primary text-white shadow-xl shadow-primary/20' : 'bg-outline-variant opacity-40 text-on-surface-variant'
+                  }`}
+                >
+                  Apply Label
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
 

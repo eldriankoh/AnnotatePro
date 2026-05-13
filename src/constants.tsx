@@ -31,6 +31,17 @@ export const THEME_COLORS = [
   { name: 'Amber', accent: '#d97706', color: 'text-amber-600', border: 'border-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-100' },
   { name: 'Cyan', accent: '#0891b2', color: 'text-cyan-600', border: 'border-cyan-600', bg: 'bg-cyan-50', ring: 'ring-cyan-100' },
   { name: 'Rose', accent: '#e11d48', color: 'text-rose-600', border: 'border-rose-600', bg: 'bg-rose-50', ring: 'ring-rose-100' },
+  { name: 'Teal', accent: '#0d9488', color: 'text-teal-600', border: 'border-teal-600', bg: 'bg-teal-50', ring: 'ring-teal-100' },
+  { name: 'Lime', accent: '#65a30d', color: 'text-lime-600', border: 'border-lime-600', bg: 'bg-lime-50', ring: 'ring-lime-100' },
+  { name: 'Sky', accent: '#0284c7', color: 'text-sky-600', border: 'border-sky-600', bg: 'bg-sky-50', ring: 'ring-sky-100' },
+  { name: 'Violet', accent: '#7c3aed', color: 'text-violet-600', border: 'border-violet-600', bg: 'bg-violet-50', ring: 'ring-violet-100' },
+  { name: 'Fuchsia', accent: '#c026d3', color: 'text-fuchsia-600', border: 'border-fuchsia-600', bg: 'bg-fuchsia-50', ring: 'ring-fuchsia-100' },
+  { name: 'Slate', accent: '#475569', color: 'text-slate-600', border: 'border-slate-600', bg: 'bg-slate-50', ring: 'ring-slate-100' },
+  { name: 'Brown', accent: '#78350f', color: 'text-amber-900', border: 'border-amber-900', bg: 'bg-amber-50', ring: 'ring-amber-200' },
+  { name: 'Yellow', accent: '#ca8a04', color: 'text-yellow-600', border: 'border-yellow-600', bg: 'bg-yellow-50', ring: 'ring-yellow-100' },
+  { name: 'Zinc', accent: '#52525b', color: 'text-zinc-600', border: 'border-zinc-600', bg: 'bg-zinc-50', ring: 'ring-zinc-100' },
+  { name: 'Stone', accent: '#78716c', color: 'text-stone-600', border: 'border-stone-600', bg: 'bg-stone-50', ring: 'ring-stone-100' },
+  { name: 'Coffee', accent: '#451a03', color: 'text-amber-950', border: 'border-amber-950', bg: 'bg-amber-50', ring: 'ring-amber-200' },
 ];
 
 export const AVAILABLE_ICONS = [
