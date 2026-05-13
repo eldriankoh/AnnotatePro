@@ -17,10 +17,10 @@
 ### 1. The Workspace
 | Component | Description |
 | :--- | :--- |
-| **Central Canvas** | High-resolution image preview with precision zoom (up to 8x) and panning. |
-| **Category Rail** | Quick-access multi-select labeling cards with color-coded identifiers. |
-| **Control Matrix** | Navigation tools for dataset traversal (Next/Prev) and view mode toggles (Theater/Full). |
-| **Metadata Panel** | Real-time tracking of dataset path, timing, and throughput metrics. |
+| **Central Canvas** | High-resolution image preview with Precision View Engine (8x zoom) and integrated overlay controls. |
+| **Action Sidebar** | The primary control hub containing category toggles, the active session timer, and the "Apply Extraction" matrix. |
+| **Intelligence Header** | Real-time performance dashboard tracking labels/min, dataset path status, and global workspace toggles. |
+| **Navigation Anchor** | Minimalist footer for dataset traversal with visual indicators for keyboard shortcut status. |
 
 ---
 
@@ -168,7 +168,7 @@ Maximize efficiency with dedicated keyboard mappings:
 
 - **Elegant Layout Transitions**: Completely overhauled the transition logic between Workspace, Settings, and Metrics for a smoother, high-end feel.
 - **Drag & Drop Visibility**: Added explicit on-screen instructions for Drag & Drop support to improve accessibility for new users.
-- **Refined Category Rail**: Optimized the sidebar with a cleaner visual hierarchy and improved scrolling performance.
+- **Refined Action Sidebar**: Optimized the sidebar with a cleaner visual hierarchy and improved scrolling performance.
 - **Integrated Tutorial System**: Added a persistent 'i' icon in the header for anytime-access to onboarding instructions.
 - **Smart Timer Management**: The session timer now automatically pauses when the tutorial is open and resumes when closed, ensuring timing accuracy.
 - **Expanded Analytics View**: Removed sidebars in the analytics view to provide a 50% increase in usable space for data visualization.
