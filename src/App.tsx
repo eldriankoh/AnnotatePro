@@ -348,7 +348,11 @@ export default function App() {
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
-  const [userName, setUserName] = useState('');
+  const [userName, setUserName] = useState(() => localStorage.getItem('user_name') || '');
+
+  useEffect(() => {
+    localStorage.setItem('user_name', userName);
+  }, [userName]);
   const [isAtTutorialBottom, setIsAtTutorialBottom] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isTheaterMode, setIsTheaterMode] = useState(false);
@@ -528,17 +532,10 @@ export default function App() {
     }
   }, []);
 
-  // Auto-save progress to localStorage
   useEffect(() => {
-    if (Object.keys(annotations).length > 0) {
-      localStorage.setItem('annotations_v1', JSON.stringify(annotations));
-    }
-    if (Object.keys(annotationMetrics).length > 0) {
-      localStorage.setItem('metrics_v1', JSON.stringify(annotationMetrics));
-    }
-    if (Object.keys(accumulatedTimes).length > 0) {
-      localStorage.setItem('accumulated_v1', JSON.stringify(accumulatedTimes));
-    }
+    localStorage.setItem('annotations_v1', JSON.stringify(annotations));
+    localStorage.setItem('metrics_v1', JSON.stringify(annotationMetrics));
+    localStorage.setItem('accumulated_v1', JSON.stringify(accumulatedTimes));
     localStorage.setItem('current_image_v1', currentImage.toString());
     if (!showTutorial) {
       localStorage.setItem('tutorial_completed', 'true');
@@ -560,21 +557,22 @@ export default function App() {
     }
   }, [totalImages, currentImage]);
 
+  const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+
   const handleResetProgress = () => {
-    if (window.confirm('Are you sure you want to clear all labeling progress? This cannot be undone.')) {
-      setAnnotations({});
-      setAnnotationMetrics({});
-      setAccumulatedTimes({});
-      setSessionStartTime(null);
-      setCurrentImage(1);
-      setSelectedCategories([]);
-      setIsFinished(false);
-      localStorage.removeItem('annotations_v1');
-      localStorage.removeItem('metrics_v1');
-      localStorage.removeItem('accumulated_v1');
-      localStorage.removeItem('current_image_v1');
-      setLastSaved(null);
-    }
+    setAnnotations({});
+    setAnnotationMetrics({});
+    setAccumulatedTimes({});
+    setSessionStartTime(null);
+    setCurrentImage(1);
+    setSelectedCategories([]);
+    setIsFinished(false);
+    localStorage.removeItem('annotations_v1');
+    localStorage.removeItem('metrics_v1');
+    localStorage.removeItem('accumulated_v1');
+    localStorage.removeItem('current_image_v1');
+    setLastSaved(null);
+    setIsConfirmingReset(false);
   };
 
   const [groundTruth, setGroundTruth] = useState<any[] | null>(null);
@@ -904,7 +902,10 @@ export default function App() {
   };
 
   const handleTimerToggle = () => {
-    if (imageFiles.length === 0) return;
+    if (imageFiles.length === 0) {
+      handleSelectDirectory();
+      return;
+    }
     
     if (sessionStartTime) {
       // Pause
@@ -1006,10 +1007,11 @@ export default function App() {
 
   const downloadCSV = () => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-    const filename = `annotations_${timestamp}.csv`;
+    const safeUserName = (userName || 'anonymous').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const filename = `annotations_${safeUserName}_${timestamp}.csv`;
     
       // Header matches Truth: filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
-      // We add StartTime, EndTime, and DurationSeconds for analysis
+      // We add StartTime, EndTime, DurationSeconds for analysis
       const headers = ['filename', ...localCategories.map(c => c.key), 'StartTime', 'EndTime', 'DurationSeconds'];
       let csvContent = headers.join(',') + '\n';
   
@@ -1036,7 +1038,9 @@ export default function App() {
           finalEndTime = new Date().toISOString();
         }
   
-        const rowData = [fileName];
+        const rowData = [
+          `"${fileName.replace(/"/g, '""')}"`
+        ];
         localCategories.forEach(cat => {
           rowData.push((ids as number[]).includes(cat.id) ? '1' : '0');
         });
@@ -1648,27 +1652,29 @@ export default function App() {
                       )}
                     </AnimatePresence>
 
-                    <div className={`relative w-full h-full p-1 flex items-center justify-center overflow-hidden transition-all duration-700 ${!sessionStartTime && totalImages > 0 ? 'scale-90 opacity-0 blur-xl' : 'scale-100 opacity-100 blur-0'}`}>
+                    <div className={`relative w-full h-full p-2 md:p-4 flex items-center justify-center overflow-hidden transition-all duration-700 ${!sessionStartTime && totalImages > 0 ? 'scale-90 opacity-0 blur-xl' : 'scale-100 opacity-100 blur-0'}`}>
                       <TransformWrapper
                       ref={transformComponentRef}
                       initialScale={1}
-                      initialPositionX={0}
-                      initialPositionY={0}
-                      centerOnInit
+                      minScale={0.1}
+                      maxScale={8}
+                      centerOnInit={true}
+                      centerOnMount={true}
+                      limitToBounds={false} // Allow panning outside slightly if zoomed in
                       key={currentImage} // Reset zoom/pan when image changes
                     >
                       {({ zoomIn, zoomOut, resetTransform }) => (
                         <>
                           < TransformComponent
-                            wrapperClassName="!w-full !h-full"
-                            contentClassName="!w-full !h-full flex items-center justify-center"
+                            wrapperClassName="!w-full !h-full flex items-center justify-center p-4"
+                            contentClassName="flex items-center justify-center"
                           >
                             {currentImageUrl ? (
                               <img 
                                 src={currentImageUrl} 
                                 alt="Workspace" 
-                                className="max-w-full max-h-full object-contain cursor-move pointer-events-none select-none"
-                                style={{ width: 'auto', height: 'auto', display: 'block' }}
+                                className="max-w-full max-h-[calc(100vh-250px)] w-auto h-auto object-contain cursor-move pointer-events-none select-none rounded-lg shadow-2xl"
+                                style={{ display: 'block' }}
                               />
                             ) : (
                               <div className="flex flex-col items-center gap-6 text-on-surface-variant/40 text-center px-12">
@@ -1772,63 +1778,89 @@ export default function App() {
                     pointerEvents: isFinished || isTheaterMode ? 'none' : 'auto' 
                   }}
                 >
-                <div className="mb-4 md:mb-6 flex justify-between items-start">
-                  <div className="min-w-0">
-                    <h3 className="text-base md:text-lg font-bold tracking-tight text-on-surface truncate">Categories</h3>
-                    <p className="text-xs md:text-sm text-on-surface-variant mt-1 italic truncate opacity-60">Assign label to image</p>
-                  </div>
-                  <div className="flex gap-2">
+                  <div className="mb-4 md:mb-6 flex justify-between items-start">
+                    <div className="min-w-0">
+                      <h3 className="text-base md:text-lg font-bold tracking-tight text-on-surface truncate">Categories</h3>
+                      <p className="text-xs md:text-sm text-on-surface-variant mt-1 italic truncate opacity-60">Assign label to image</p>
+                    </div>
                     <button 
                       onClick={() => {
                         if (sessionStartTime) {
-                          // Just pause the session, don't fully commit to recordMetrics yet 
-                          // handleTimerToggle will do the accumulation
                           handleTimerToggle();
                         }
                         setShowTutorial(true);
                       }}
                       className="p-2 text-on-surface-variant hover:bg-surface-variant/5 hover:text-primary rounded-xl transition-all border border-transparent"
-                      title="Show Tutorial"
+                      title="Show Onboarding Tutorial"
                     >
                       <Info size={20} />
                     </button>
+                  </div>
 
+                  <div className="mb-6 flex items-center justify-between gap-3">
                     <button 
                       onClick={handleTimerToggle}
                       disabled={imageFiles.length === 0}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${
+                      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border shadow-sm ${
                         imageFiles.length === 0 
-                          ? 'bg-outline-variant/10 text-outline border-transparent cursor-not-allowed' 
+                          ? 'bg-outline-variant/10 text-outline border-transparent cursor-not-allowed opacity-50' 
                           : sessionStartTime 
-                            ? 'bg-green-50 text-green-600 border-green-200' 
-                            : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'
+                            ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100' 
+                            : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100 ring-2 ring-amber-100 ring-offset-2'
                       }`}
-                      title={imageFiles.length === 0 ? "Connect dataset to start timer" : sessionStartTime ? "Pause Timer" : "Resume Timer"}
+                      title={imageFiles.length === 0 ? "Connect dataset to start timer" : sessionStartTime ? "Pause Timer" : "Start Session Timer"}
                     >
-                      <div className={`w-1.5 h-1.5 rounded-full ${imageFiles.length === 0 ? 'bg-outline-variant' : sessionStartTime ? 'bg-green-500 animate-pulse' : 'bg-orange-500'}`} />
-                      {sessionStartTime ? 'Running' : (imageFiles.length === 0 ? 'Disconnected' : 'Paused / Start')}
+                      <div className={`w-1.5 h-1.5 rounded-full ${imageFiles.length === 0 ? 'bg-outline-variant' : sessionStartTime ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                      {sessionStartTime ? 'Recording' : (imageFiles.length === 0 ? 'No Data' : 'Session Start')}
                     </button>
-                    {Object.keys(annotations).length > 0 && (
-                      <div className="flex gap-1">
-                        <button 
-                          onClick={downloadCSV}
-                          className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all border border-transparent hover:border-primary/20"
-                          title="Download CSV of current progress"
-                        >
-                          <Save size={20} />
-                        </button>
-                        <button 
-                          onClick={handleResetProgress}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-200"
-                          title="Clear all labels and timer progress"
-                        >
-                          <RotateCcw size={18} />
-                        </button>
-                      </div>
-                    )}
+                    
+                    <div className="flex gap-1 border-l border-outline-variant/30 pl-2 items-center">
+                      <button 
+                        onClick={() => setSelectedCategories([])}
+                        disabled={selectedCategories.length === 0 || isFinished}
+                        className="p-2 text-on-surface-variant hover:bg-surface-variant/5 rounded-xl transition-all border border-transparent hover:border-outline-variant disabled:opacity-20 disabled:cursor-not-allowed"
+                        title="Reset current image labels"
+                      >
+                        <RotateCcw size={18} />
+                      </button>
+                      { (Object.keys(annotations).length > 0 || Object.keys(accumulatedTimes).length > 0 || sessionStartTime || currentImage > 1) && (
+                        <>
+                          <button 
+                            onClick={downloadCSV}
+                            className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all border border-transparent hover:border-primary/20"
+                            title="Download Progress (CSV)"
+                          >
+                            <Save size={20} />
+                          </button>
+                          
+                          {isConfirmingReset ? (
+                            <div className="flex items-center gap-1 bg-red-50 p-1 rounded-xl border border-red-200 animate-in fade-in slide-in-from-right-2">
+                              <button 
+                                onClick={handleResetProgress}
+                                className="px-2 py-1 text-[9px] font-black uppercase text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                              >
+                                Confirm
+                              </button>
+                              <button 
+                                onClick={() => setIsConfirmingReset(false)}
+                                className="p-1 px-2 text-[9px] font-black uppercase text-on-surface-variant hover:bg-surface-variant/10 rounded-lg transition-colors"
+                              >
+                                Esc
+                              </button>
+                            </div>
+                          ) : (
+                            <button 
+                              onClick={() => setIsConfirmingReset(true)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-200"
+                              title="Clear all progress, labels, and timers"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-
                 <div className="flex-1 relative flex flex-col overflow-hidden">
                   {/* Scroll Up Indicator */}
                   <AnimatePresence>
