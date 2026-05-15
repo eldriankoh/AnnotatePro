@@ -24,6 +24,23 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  LineChart, 
+  Line,
+  Legend,
+  AreaChart,
+  Area
+} from 'recharts';
+import { 
   ChevronLeft, 
   ChevronRight,
   ChevronUp,
@@ -51,7 +68,12 @@ import {
   FileText,
   Zap,
   X,
-  Tags
+  Tags,
+  Clock,
+  TrendingUp,
+  Activity,
+  Layers,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
@@ -576,7 +598,78 @@ export default function App() {
   };
 
   const [groundTruth, setGroundTruth] = useState<any[] | null>(null);
-  const [metricsResults, setMetricsResults] = useState<any>(null);
+  const [metricsResults, setMetricsResults] = useState<{
+    accuracy: number;
+    meanF1: number;
+    categoryMetrics: any[];
+    totalSamples: number;
+    userCount: number;
+    distributionGT?: { name: string, count: number }[];
+    distributionUser?: { name: string, count: number }[];
+    coOccurrence?: { name: string, [key: string]: any }[];
+    timelineData?: { index: number, duration: number, labels: number }[];
+    speedStats?: {
+      avgTime: number;
+      totalTime: number;
+      fastest: number;
+      slowest: number;
+    };
+  } | null>(null);
+
+  const [sessionStats, setSessionStats] = useState<{
+    distribution: { name: string, count: number, color: string }[];
+    speedTimeline: { name: string, duration: number }[];
+    efficiency: {
+      avgTime: number;
+      totalTime: number;
+      labelsPerMinute: number;
+    };
+  } | null>(null);
+
+  // Calculate basic session stats whenever annotations or metrics change
+  useEffect(() => {
+    if (Object.keys(annotations).length === 0) {
+      setSessionStats(null);
+      return;
+    }
+
+    // 1. Label Distribution
+    const counts: Record<number, number> = {};
+    Object.values(annotations).flat().forEach(id => {
+      counts[id] = (counts[id] || 0) + 1;
+    });
+
+    const distribution = localCategories.map(cat => ({
+      name: cat.name,
+      count: counts[cat.id] || 0,
+      color: cat.hex || '#6366f1'
+    })).filter(d => d.count > 0);
+
+    // 2. Speed Timeline
+    const speedTimeline = Object.entries(annotationMetrics)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([idx, m]) => ({
+        name: `Img ${idx}`,
+        duration: m.duration
+      }));
+
+    // 3. Efficiency
+    const durations = Object.values(annotationMetrics).map(m => m.duration);
+    const totalTime = durations.reduce((a, b) => a + b, 0);
+    const avgTime = durations.length > 0 ? totalTime / durations.length : 0;
+    const totalLabels = Object.values(annotations).flat().length;
+    const labelsPerMinute = totalTime > 0 ? (totalLabels / totalTime) * 60 : 0;
+
+    setSessionStats({
+      distribution,
+      speedTimeline,
+      efficiency: {
+        avgTime,
+        totalTime,
+        labelsPerMinute
+      }
+    });
+  }, [annotations, annotationMetrics, localCategories]);
   const [importedAnnotations, setImportedAnnotations] = useState<Record<string, Record<number, number[]>>>({});
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -691,9 +784,7 @@ export default function App() {
     }
   }, [annotations, groundTruth, importedAnnotations]);
 
-  const calculateStats = (gtData: any[]) => {
-    // Determine which annotation sets to use
-    // If we have imported ones, use those. Otherwise use current session.
+   const calculateStats = (gtData: any[]) => {
     const setsToEvaluate: Record<number, number[]>[] = [];
     
     if (Object.keys(importedAnnotations).length > 0) {
@@ -705,7 +796,6 @@ export default function App() {
     if (setsToEvaluate.length === 0) return;
 
     let aggregateAccuracy = 0;
-    let aggregateMeanF1 = 0;
     let totalValidatedSamples = 0;
 
     const aggregateClassStats = localCategories.reduce((acc: any, cat: any) => {
@@ -713,14 +803,25 @@ export default function App() {
       return acc;
     }, {});
 
+    // For distribution charts
+    const gtCounts: Record<string, number> = {};
+    const userCounts: Record<string, number> = {};
+    
+    // For co-occurrence (simplified: pairs of user labels)
+    const coOccur: Record<string, Record<string, number>> = {};
+    localCategories.forEach(c1 => {
+      coOccur[c1.name] = {};
+      localCategories.forEach(c2 => {
+        coOccur[c1.name][c2.name] = 0;
+      });
+    });
+
     setsToEvaluate.forEach(targetAnnotations => {
       let totalCorrect = 0;
       let totalSamples = 0;
 
-      // Map annotations by filename for easy lookup
       const annotationMap: Record<string, number[]> = {};
       Object.entries(targetAnnotations).forEach(([idx, ids]) => {
-        // Handle the filename hint stored during import
         if (idx.startsWith('__file_')) {
           annotationMap[idx.replace('__file_', '')] = ids as number[];
         } else {
@@ -741,11 +842,27 @@ export default function App() {
         totalSamples++;
         totalValidatedSamples++;
 
+        // Track user distribution
+        userLabels.forEach(id => {
+          const cat = localCategories.find(c => c.id === id);
+          if (cat) userCounts[cat.name] = (userCounts[cat.name] || 0) + 1;
+        });
+
+        // Track co-occurrence
+        userLabels.forEach(id1 => {
+          const c1 = localCategories.find(c => c.id === id1);
+          if (!c1) return;
+          userLabels.forEach(id2 => {
+            const c2 = localCategories.find(c => c.id === id2);
+            if (!c2) return;
+            coOccur[c1.name][c2.name]++;
+          });
+        });
+
         let isImageCorrect = true;
         localCategories.forEach(cat => {
           const isSelectedByUser = userLabels.includes(cat.id);
           
-          // Robust lookup in GT row: try key, then try display name, both case-insensitive
           let gtValue = row[cat.key];
           if (gtValue === undefined) {
              const keys = Object.keys(row);
@@ -754,6 +871,10 @@ export default function App() {
           }
           
           const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
+
+          if (isPresentInGT) {
+            gtCounts[cat.name] = (gtCounts[cat.name] || 0) + 1;
+          }
 
           if (isSelectedByUser && isPresentInGT) {
             aggregateClassStats[cat.key].tp++;
@@ -791,12 +912,31 @@ export default function App() {
     const meanAccuracy = aggregateAccuracy / setsToEvaluate.length;
     const meanF1 = categoryMetrics.reduce((acc, curr) => acc + curr.f1, 0) / categoryMetrics.length;
 
+    // Prepare chart data
+    const distributionUser = localCategories.map(cat => ({
+      name: cat.name,
+      count: userCounts[cat.name] || 0
+    }));
+
+    const distributionGT = localCategories.map(cat => ({
+      name: cat.name,
+      count: gtCounts[cat.name] || 0
+    }));
+
+    const coOccurrence = Object.entries(coOccur).map(([name, peers]) => ({
+      name,
+      ...peers
+    }));
+
     setMetricsResults({
       accuracy: meanAccuracy,
       meanF1,
       categoryMetrics,
-      totalSamples: totalValidatedSamples / setsToEvaluate.length, // Avg samples per user or total? Let's say per user.
-      userCount: setsToEvaluate.length
+      totalSamples: totalValidatedSamples / setsToEvaluate.length,
+      userCount: setsToEvaluate.length,
+      distributionGT,
+      distributionUser,
+      coOccurrence
     });
   };
 
@@ -1261,11 +1401,171 @@ export default function App() {
                   </div>
 
                   <div className="space-y-1 md:space-y-2">
-                    <h2 className="text-xl md:text-3xl font-black tracking-tight text-on-surface uppercase leading-none">Performance Analytics</h2>
-                    <p className="text-on-surface-variant text-xs md:text-sm opacity-60">Validate extraction accuracy against ground truth datasets</p>
+                    <h2 className="text-xl md:text-3xl font-black tracking-tight text-on-surface uppercase leading-none">Insights & Analytics</h2>
+                    <p className="text-on-surface-variant text-xs md:text-sm opacity-60">
+                      {metricsResults ? 'Validation results against ground truth dataset' : 'Live labeling velocity and distribution'}
+                    </p>
+                  </div>
+
+                  {/* Session Overview (Visible even without metricsResults) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                          <Activity size={16} />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Labels / Min</span>
+                      </div>
+                      <span className="text-3xl md:text-4xl font-black tracking-tighter text-on-surface">
+                        {sessionStats?.efficiency.labelsPerMinute.toFixed(1) || '0.0'}
+                      </span>
+                    </div>
+                    
+                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                          <Clock size={16} />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Avg Time / Img</span>
+                      </div>
+                      <span className="text-3xl md:text-4xl font-black tracking-tighter text-on-surface">
+                        {sessionStats?.efficiency.avgTime.toFixed(1) || '0.0'}s
+                      </span>
+                    </div>
+
+                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                          <TrendingUp size={16} />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Total Duration</span>
+                      </div>
+                      <span className="text-3xl md:text-4xl font-black tracking-tighter text-on-surface">
+                        {sessionStats ? (sessionStats.efficiency.totalTime / 60).toFixed(1) : '0.0'}m
+                      </span>
+                    </div>
+
+                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                          <Layers size={16} />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Images Labeled</span>
+                      </div>
+                      <span className="text-3xl md:text-4xl font-black tracking-tighter text-on-surface">
+                        {Object.keys(annotations).length}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+                    {/* Time Efficiency Chart */}
+                    <div className="bg-white p-6 md:p-8 rounded-[40px] border border-outline-variant shadow-sm flex flex-col">
+                      <h3 className="font-bold uppercase tracking-widest text-xs mb-8 flex items-center gap-2">
+                        <Timer size={14} className="text-primary" />
+                        Labeling Velocity
+                      </h3>
+                      <div className="flex-1 min-h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={sessionStats?.speedTimeline || []} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="colorDur" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
+                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
+                            <XAxis 
+                              dataKey="name" 
+                              axisLine={false} 
+                              tickLine={false} 
+                              tick={{ fontSize: 9, fontWeight: 700, fill: '#64748b' }}
+                              hide
+                            />
+                            <YAxis 
+                              axisLine={false} 
+                              tickLine={false} 
+                              tick={{ fontSize: 9, fontWeight: 700, fill: '#64748b' }}
+                            />
+                            <Tooltip 
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: 'bold' }}
+                              cursor={{ stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '4 4' }}
+                            />
+                            <Area 
+                              type="monotone" 
+                              dataKey="duration" 
+                              stroke="#6366f1" 
+                              strokeWidth={3}
+                              fillOpacity={1} 
+                              fill="url(#colorDur)" 
+                              animationDuration={1500}
+                              name="Seconds"
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Distribution Chart */}
+                    <div className="bg-white p-6 md:p-8 rounded-[40px] border border-outline-variant shadow-sm flex flex-col">
+                      <h3 className="font-bold uppercase tracking-widest text-xs mb-8 flex items-center gap-2">
+                        <BarChart2 size={14} className="text-primary" />
+                        Label Distribution
+                      </h3>
+                      <div className="flex-1 min-h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart 
+                            data={metricsResults ? 
+                              metricsResults.distributionUser?.map((d, i) => ({
+                                name: d.name,
+                                user: d.count,
+                                gt: metricsResults.distributionGT?.[i].count || 0
+                              })) : 
+                              sessionStats?.distribution 
+                            }
+                            layout="vertical"
+                            margin={{ top: 0, right: 30, left: 40, bottom: 0 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} strokeOpacity={0.1} />
+                            <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700 }} />
+                            <YAxis 
+                              type="category" 
+                              dataKey="name" 
+                              axisLine={false} 
+                              tickLine={false} 
+                              width={80}
+                              tick={{ fontSize: 9, fontWeight: 800, fill: '#1e293b' }}
+                            />
+                            <Tooltip 
+                              cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: 'bold' }}
+                            />
+                            {metricsResults ? (
+                              <>
+                                <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }} />
+                                <Bar dataKey="gt" name="Ground Truth" fill="#e2e8f0" radius={[0, 4, 4, 0]} barSize={12} />
+                                <Bar dataKey="user" name="Annotator" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={12} />
+                              </>
+                            ) : (
+                              <Bar dataKey="count" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={24}>
+                                {sessionStats?.distribution.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                              </Bar>
+                            )}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
                   </div>
 
                   {!metricsResults ? (
+                    <div className="space-y-6">
+                      <div className="flex items-center gap-4">
+                        <div className="h-px bg-outline-variant flex-1" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-on-surface-variant opacity-40">Validation Mode</span>
+                        <div className="h-px bg-outline-variant flex-1" />
+                      </div>
                     <div className="grid grid-cols-2 gap-8 items-stretch">
                       {/* Ground Truth Drop Zone */}
                       <div 
@@ -1335,15 +1635,16 @@ export default function App() {
                         </label>
                       </div>
                     </div>
-                  ) : (
-                    <div className="space-y-8">
+                  </div>
+                ) : (
+                    <div className="space-y-10">
                       {/* High Level Stats */}
-                      <div className="grid grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                         <div className="bg-white p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
                           <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Overall Accuracy</span>
                           <span className="text-4xl font-black tracking-tighter text-on-surface">{(metricsResults.accuracy * 100).toFixed(1)}%</span>
                           <div className="mt-4 h-1.5 bg-outline-variant/30 rounded-full overflow-hidden">
-                            <motion.div initial={{ width: 0 }} animate={{ width: `${metricsResults.accuracy * 100}%` }} className="h-full bg-primary" />
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${metricsResults.accuracy * 100}%` }} className="h-full bg-emerald-500" />
                           </div>
                         </div>
                         <div className="bg-white p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
@@ -1356,18 +1657,63 @@ export default function App() {
                         <div className="bg-white p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
                           <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Samples Validated</span>
                           <span className="text-4xl font-black tracking-tighter text-on-surface">{metricsResults.totalSamples}</span>
-                          <div className="mt-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Images Matched</div>
+                          <div className="mt-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
+                            <CheckCircle2 size={10} className="text-emerald-500" />
+                            Images Matched
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Co-occurrence Heatmap-like chart */}
+                      <div className="bg-white p-8 rounded-[40px] border border-outline-variant shadow-sm flex flex-col">
+                        <h3 className="font-bold uppercase tracking-widest text-xs mb-8 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Users size={14} className="text-primary" />
+                            Category Correlation
+                          </div>
+                          <span className="text-[9px] text-on-surface-variant opacity-60">Frequency of co-occurrence across labels</span>
+                        </h3>
+                        <div className="flex-1 min-h-[400px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart 
+                              data={metricsResults.coOccurrence}
+                              margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
+                              <XAxis 
+                                dataKey="name" 
+                                angle={-45} 
+                                textAnchor="end" 
+                                interval={0} 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fontSize: 9, fontWeight: 800 }}
+                              />
+                              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700 }} />
+                              <Tooltip cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} />
+                              <Legend wrapperStyle={{ paddingTop: '40px', fontSize: '9px', fontWeight: 700 }} />
+                              {localCategories.map((cat, i) => (
+                                <Bar 
+                                  key={cat.id} 
+                                  dataKey={cat.name} 
+                                  stackId="a" 
+                                  fill={cat.hex || THEME_COLORS[i % THEME_COLORS.length].hex} 
+                                  opacity={0.8}
+                                />
+                              ))}
+                            </BarChart>
+                          </ResponsiveContainer>
                         </div>
                       </div>
 
                       {/* Class Level Stats */}
                       <div className="bg-white rounded-[40px] border border-outline-variant shadow-sm overflow-hidden">
-                        <div className="px-8 py-6 border-b border-outline-variant flex items-center justify-between">
-                          <h3 className="font-bold uppercase tracking-widest text-xs">Category Breakdown</h3>
-                          <div className="flex gap-4 text-[10px] font-black text-on-surface-variant uppercase">
-                            <span>Precision</span>
-                            <span>Recall</span>
-                            <span>F1 Score</span>
+                        <div className="px-8 py-6 border-b border-outline-variant flex items-center justify-between bg-surface/30">
+                          <h3 className="font-bold uppercase tracking-widest text-xs">Error Analysis per Category</h3>
+                          <div className="flex gap-12 text-[10px] font-black text-on-surface-variant uppercase">
+                            <span className="w-12 text-center">Precision</span>
+                            <span className="w-12 text-center">Recall</span>
+                            <span className="w-12 text-center">F1 Score</span>
                           </div>
                         </div>
                         <div className="divide-y divide-outline-variant">
@@ -1401,6 +1747,80 @@ export default function App() {
                       </div>
                     </div>
                   )}
+
+                  {/* Recent Activity Spot Check */}
+                  <div className="bg-white rounded-[40px] border border-outline-variant shadow-sm overflow-hidden min-h-[400px] flex flex-col">
+                    <div className="px-8 py-6 border-b border-outline-variant bg-surface/30">
+                      <h3 className="font-bold uppercase tracking-widest text-xs flex items-center gap-2">
+                        <Tags size={14} className="text-primary" />
+                        Live Activity Spot Check
+                      </h3>
+                    </div>
+                    <div className="flex-1 overflow-auto max-h-[500px]">
+                      <table className="w-full text-left">
+                        <thead className="sticky top-0 bg-white shadow-sm z-10 border-b border-outline-variant">
+                          <tr>
+                            <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Image Index</th>
+                            <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Applied Labels</th>
+                            <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Processing Time</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-outline-variant">
+                          {Object.keys(annotations).length > 0 ? (
+                            Object.entries(annotations)
+                              .sort((a, b) => Number(b[0]) - Number(a[0]))
+                              .slice(0, 50)
+                              .map(([id, ids]) => {
+                                const idx = Number(id);
+                                const metrics = annotationMetrics[idx];
+                                return (
+                                  <tr key={id} className="hover:bg-background transition-colors">
+                                    <td className="px-8 py-4 text-xs font-black text-on-surface opacity-80 tabular-nums">
+                                      #{idx}
+                                    </td>
+                                    <td className="px-8 py-4">
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {ids.length > 0 ? ids.map(catId => {
+                                          const cat = localCategories.find(c => c.id === catId);
+                                          return (
+                                            <span key={catId} className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border transition-all ${cat?.bg} ${cat?.color} ${cat?.border}`}>
+                                              {cat?.name}
+                                            </span>
+                                          );
+                                        }) : (
+                                          <span className="text-[9px] font-bold uppercase tracking-widest text-red-400 bg-red-50 border border-red-100 px-2 py-0.5 rounded-lg">
+                                            No Label
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-4">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-16 h-1 bg-outline-variant/30 rounded-full overflow-hidden">
+                                          <div 
+                                            className="h-full bg-primary/60" 
+                                            style={{ width: `${Math.min(100, (metrics?.duration || 0) * 10)}%` }} 
+                                          />
+                                        </div>
+                                        <span className="text-[10px] font-bold tabular-nums text-on-surface-variant">
+                                          {(metrics?.duration || 0).toFixed(1)}s
+                                        </span>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                          ) : (
+                            <tr>
+                              <td colSpan={3} className="px-8 py-20 text-center text-on-surface-variant/40 text-xs font-bold uppercase tracking-widest">
+                                No activity recorded in this session
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             ) : (activeView === 'settings' && settingsDraft) ? (
