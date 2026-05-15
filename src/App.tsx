@@ -600,31 +600,75 @@ export default function App() {
     const newImportedAnnots: Record<string, Record<number, number[]>> = { ...importedAnnotations };
 
     for (const file of Array.from(files) as File[]) {
+      const text = await file.text();
+      
+      // Try to extract category mapping metadata if it exists
+      let csvMetadata: any = null;
+      const metadataLine = text.split('\n').find(l => l.trim().startsWith('#categories:'));
+      if (metadataLine) {
+        try {
+          csvMetadata = JSON.parse(metadataLine.replace('#categories:', '').trim());
+        } catch (err) {
+          console.warn("Failed to parse CSV metadata", err);
+        }
+      }
+
       await new Promise<void>((resolve) => {
-        Papa.parse(file, {
+        Papa.parse(text, {
           header: true,
           skipEmptyLines: true,
+          comments: '#',
           complete: (results) => {
             const annotationMap: Record<number, number[]> = {};
+            const headers = results.meta.fields || [];
             
-            // Map CSV row to category IDs
-            // The CSV format matches Truth: filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
+            // Create a mapping from CSV column name to local category ID
+            const csvToLocalIdMap: Record<string, number> = {};
+            
+            localCategories.forEach(cat => {
+              // Priority 1: Match by ID/Key from metadata if available
+              if (csvMetadata) {
+                const metaCat = csvMetadata.find((m: any) => m.id === cat.id);
+                if (metaCat && headers.includes(metaCat.key)) {
+                  csvToLocalIdMap[metaCat.key] = cat.id;
+                  return;
+                }
+              }
+
+              // Priority 2: Direct key match
+              if (headers.includes(cat.key)) {
+                csvToLocalIdMap[cat.key] = cat.id;
+              } 
+              // Priority 3: Case-insensitive key match
+              else {
+                const foundKey = headers.find(h => h.toLowerCase() === cat.key.toLowerCase());
+                if (foundKey) {
+                  csvToLocalIdMap[foundKey] = cat.id;
+                }
+                // Priority 4: Display name match
+                else {
+                  const foundLabel = headers.find(h => h.toLowerCase() === cat.name.toLowerCase());
+                  if (foundLabel) {
+                    csvToLocalIdMap[foundLabel] = cat.id;
+                  }
+                }
+              }
+            });
+
             results.data.forEach((row: any, idx: number) => {
-              const fileIdx = idx + 1; // Assuming sequential for now if image files not loaded, 
-              // but better to match filename if available
+              const fileIdx = idx + 1;
               const labels: number[] = [];
-              localCategories.forEach(cat => {
-                const val = row[cat.key];
+              
+              // Use our robust mapping to gather labels
+              Object.entries(csvToLocalIdMap).forEach(([csvHeader, catId]) => {
+                const val = row[csvHeader];
                 if (val === '1' || val === 1 || String(val).toLowerCase() === 'true') {
-                  labels.push(cat.id);
+                  labels.push(catId);
                 }
               });
               
-              // We'll use the row index + 1 as image index if we can't find a file matching filename
-              // In metrics, we'll primarily match by filename in calculateStats anyway.
               annotationMap[fileIdx] = labels;
               
-              // Store filename hint if present
               if (row.filename) {
                  const baseName = String(row.filename).split(/[/\\]/).pop() || String(row.filename);
                  (annotationMap as any)[`__file_${baseName}`] = labels;
@@ -700,7 +744,15 @@ export default function App() {
         let isImageCorrect = true;
         localCategories.forEach(cat => {
           const isSelectedByUser = userLabels.includes(cat.id);
-          const gtValue = row[cat.key];
+          
+          // Robust lookup in GT row: try key, then try display name, both case-insensitive
+          let gtValue = row[cat.key];
+          if (gtValue === undefined) {
+             const keys = Object.keys(row);
+             const match = keys.find(k => k.toLowerCase() === cat.key.toLowerCase() || k.toLowerCase() === cat.name.toLowerCase());
+             if (match) gtValue = row[match];
+          }
+          
           const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
 
           if (isSelectedByUser && isPresentInGT) {
@@ -1010,10 +1062,14 @@ export default function App() {
     const safeUserName = (userName || 'anonymous').replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const filename = `annotations_${safeUserName}_${timestamp}.csv`;
     
+      // Add a hidden metadata row for robust importing if categories change
+      const catMetadata = localCategories.map(c => ({ id: c.id, key: c.key, name: c.name }));
+      const metadataRow = `#categories:${JSON.stringify(catMetadata)}`;
+
       // Header matches Truth: filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
       // We add StartTime, EndTime, DurationSeconds for analysis
       const headers = ['filename', ...localCategories.map(c => c.key), 'StartTime', 'EndTime', 'DurationSeconds'];
-      let csvContent = headers.join(',') + '\n';
+      let csvContent = metadataRow + '\n' + headers.join(',') + '\n';
   
       Object.entries(annotations).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([id, ids]) => {
         const index = Number(id);
