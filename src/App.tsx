@@ -23,23 +23,7 @@ import {
   useSortable 
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  LineChart, 
-  Line,
-  Legend,
-  AreaChart,
-  Area
-} from 'recharts';
+import { AreaChart, Area, Legend, ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import { 
   ChevronLeft, 
   ChevronRight,
@@ -68,17 +52,21 @@ import {
   FileText,
   Zap,
   X,
+  Search,
   Tags,
   Clock,
   TrendingUp,
   Activity,
   Layers,
-  Users
+  Users,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import Papa from 'papaparse';
 import { THEME_COLORS, AVAILABLE_ICONS, CATEGORIES as DEFAULT_CATEGORIES } from './constants';
+
+const formatHeader = (name: string) => name.toLowerCase().replace(/[\s-]+/g, '_');
 
 function ElegantSelect({ 
   value, 
@@ -93,16 +81,18 @@ function ElegantSelect({
   options: any[], 
   onChange: (val: any) => void,
   label: string,
-  renderIcon: (opt: any) => ReactNode,
+  renderIcon: (opt: any, isSelected: boolean) => ReactNode,
   onOpenChange?: (open: boolean) => void,
   columns?: number
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     onOpenChange?.(isOpen || isAnimating);
+    if (!isOpen) setSearchQuery("");
   }, [isOpen, isAnimating, onOpenChange]);
 
   useEffect(() => {
@@ -117,6 +107,10 @@ function ElegantSelect({
 
   const selectedOption = options.find(opt => opt.value === value) || options[0];
 
+  const filteredOptions = options.filter(opt => 
+    opt.label.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="relative" ref={containerRef}>
       <label className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant opacity-40 mb-1.5 block">
@@ -128,7 +122,7 @@ function ElegantSelect({
         className="w-full bg-background border border-transparent hover:border-outline-variant focus:border-primary px-3 py-2 rounded-xl text-xs font-bold transition-all outline-none flex items-center justify-between group"
       >
         <div className="flex items-center gap-2 overflow-hidden">
-          {renderIcon(selectedOption)}
+          {renderIcon(selectedOption, true)}
           <span className="truncate">{selectedOption.label}</span>
         </div>
         <ChevronDown 
@@ -146,15 +140,37 @@ function ElegantSelect({
             animate={{ opacity: 1, y: 4, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
             onAnimationStart={() => setIsAnimating(true)}
-            className={`absolute z-50 top-full left-0 ${columns > 1 ? 'w-[280px] -left-[20px]' : 'w-full min-w-[160px]'} bg-white border border-outline-variant shadow-2xl rounded-2xl overflow-hidden p-1.5`}
+            className={`absolute z-50 top-full left-0 ${columns > 1 ? 'w-[440px] -left-[100px]' : 'w-full min-w-[160px]'} bg-white border border-outline-variant shadow-2xl rounded-2xl overflow-hidden p-1.5 flex flex-col`}
           >
+            <div className="p-2 pt-2.5 pb-2 sticky top-0 bg-white z-10 border-b border-outline-variant/30 mb-1">
+              <div className="relative flex items-center">
+                <Search size={12} className="absolute left-2.5 text-on-surface-variant opacity-40" />
+                <input 
+                  type="text" 
+                  autoFocus
+                  placeholder="Search icons..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-50 border border-transparent focus:border-primary/20 px-7 py-2 rounded-xl text-[11px] font-bold outline-none transition-all placeholder:text-on-surface-variant/40"
+                />
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 p-1 hover:bg-slate-200 rounded-md text-on-surface-variant opacity-40 hover:opacity-100 transition-all"
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div 
-              className={`max-h-[240px] overflow-y-auto pt-1 pb-1 px-1 no-scrollbar ${
-                columns > 1 ? 'grid gap-1' : 'flex flex-col'
+              className={`max-h-[320px] overflow-y-auto pt-2 pb-2 px-2 no-scrollbar ${
+                columns > 1 ? 'grid gap-6' : 'flex flex-col'
               }`}
               style={columns > 1 ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : {}}
             >
-              {options.map((opt) => (
+              {filteredOptions.length > 0 ? filteredOptions.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
@@ -164,21 +180,25 @@ function ElegantSelect({
                   }}
                   title={opt.label || ''}
                   className={`flex items-center gap-2 rounded-xl transition-all text-left group overflow-hidden ${
-                    columns > 1 ? 'p-2 justify-center aspect-square' : 'p-2 w-full mb-0.5 last:mb-0'
+                    columns > 1 ? 'p-3 justify-center aspect-square' : 'p-2 w-full mb-0.5 last:mb-0'
                   } ${
                     value === opt.value 
-                      ? 'bg-primary/10 text-primary ring-2 ring-primary/20' 
+                      ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-[0.98]' 
                       : 'hover:bg-slate-50 text-on-surface'
                   }`}
                 >
-                  <div className={`${columns > 1 ? 'scale-125' : ''}`}>
-                    {renderIcon(opt)}
+                  <div className={`transition-transform ${columns > 1 ? 'scale-110 group-hover:scale-125' : ''}`}>
+                    {renderIcon(opt, value === opt.value)}
                   </div>
                   {columns === 1 && (
                     <span className="text-xs font-bold truncate">{opt.label}</span>
                   )}
                 </button>
-              ))}
+              )) : (
+                <div className="col-span-full py-8 text-center">
+                   <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/20 italic">No matches found</p>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -268,13 +288,14 @@ function SortableCategoryItem({
             onChange={(val) => {
               const theme = THEME_COLORS.find(t => t.accent === val);
               if (theme) {
+                const { name: _themeName, ...themeStyles } = theme;
                 const next = [...localCategories];
-                next[index] = { ...cat, ...theme };
+                next[index] = { ...cat, ...themeStyles };
                 setLocalCategories(next);
               }
             }}
-            renderIcon={(opt) => (
-              <div className="w-4 h-4 rounded-full shadow-sm ring-1 ring-black/5" style={{ backgroundColor: opt.accent }} />
+            renderIcon={(opt, isSelected) => (
+              <div className={`w-4 h-4 rounded-full shadow-sm ring-1 ${isSelected ? 'ring-white scale-125' : 'ring-black/5'}`} style={{ backgroundColor: opt.accent }} />
             )}
           />
         </div>
@@ -283,7 +304,7 @@ function SortableCategoryItem({
           <ElegantSelect 
             label="Icon"
             value={AVAILABLE_ICONS.find(i => i.icon === cat.icon)?.name || 'Box'}
-            columns={4}
+            columns={6}
             onOpenChange={setIsMenuOpen}
             options={AVAILABLE_ICONS.map(i => ({ value: i.name, label: i.name, icon: i.icon }))}
             onChange={(val) => {
@@ -294,9 +315,9 @@ function SortableCategoryItem({
                 setLocalCategories(next);
               }
             }}
-            renderIcon={(opt) => {
+            renderIcon={(opt, isSelected) => {
               const Icon = opt.icon;
-              return <Icon size={16} className="opacity-70" />;
+              return <Icon size={16} className={isSelected ? 'opacity-100' : 'opacity-70'} />;
             }}
           />
         </div>
@@ -345,19 +366,19 @@ export default function App() {
   });
 
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
-  const [annotations, setAnnotations] = useState<Record<number, number[]>>(() => {
+  const [annotations, setAnnotations] = useState<Record<string, number[]>>(() => {
     try {
       const saved = localStorage.getItem('annotations_v1');
       return saved ? JSON.parse(saved) : {};
     } catch { return {}; }
   });
-  const [annotationMetrics, setAnnotationMetrics] = useState<Record<number, { start: string, end: string, duration: number }>>(() => {
+  const [annotationMetrics, setAnnotationMetrics] = useState<Record<string, { start: string, end: string, duration: number }>>(() => {
     try {
       const saved = localStorage.getItem('metrics_v1');
       return saved ? JSON.parse(saved) : {};
     } catch { return {}; }
   });
-  const [accumulatedTimes, setAccumulatedTimes] = useState<Record<number, number>>(() => {
+  const [accumulatedTimes, setAccumulatedTimes] = useState<Record<string, number>>(() => {
     try {
       const saved = localStorage.getItem('accumulated_v1');
       return saved ? JSON.parse(saved) : {};
@@ -618,7 +639,16 @@ export default function App() {
 
   const [sessionStats, setSessionStats] = useState<{
     distribution: { name: string, count: number, color: string }[];
-    speedTimeline: { name: string, duration: number }[];
+    speedTimeline: any[];
+    annotators: string[];
+    imageCount: number;
+    recentActivity: { 
+      id: string; 
+      labels: number[]; 
+      duration: number;
+      userLabels?: Record<string, number[]>;
+      gtLabels?: number[];
+    }[];
     efficiency: {
       avgTime: number;
       totalTime: number;
@@ -626,51 +656,312 @@ export default function App() {
     };
   } | null>(null);
 
+  const [importedAnnotations, setImportedAnnotations] = useState<Record<string, Record<string, { labels: number[], metrics: any }>>>({});
+  const [selectedAnnotator, setSelectedAnnotator] = useState<string>('overall');
+
   // Calculate basic session stats whenever annotations or metrics change
   useEffect(() => {
-    if (Object.keys(annotations).length === 0) {
+    let targetAnnotations: Record<string, number[]> = {};
+    let targetMetrics: Record<string, any> = {};
+
+    if (selectedAnnotator === 'overall') {
+      // Add local user
+      const localUserName = userName || 'User';
+      Object.entries(annotations).forEach(([id, labels]) => {
+        targetAnnotations[`${localUserName}::${id}`] = labels as number[];
+        targetMetrics[`${localUserName}::${id}`] = (annotationMetrics as Record<string, any>)[id];
+      });
+
+      // Combine all imported sessions
+      Object.entries(importedAnnotations).forEach(([uName, set]) => {
+        Object.entries(set as Record<string, any>).forEach(([id, entry]) => {
+          const e = entry as { labels: number[], metrics: any };
+          targetAnnotations[`${uName}::${id}`] = e.labels;
+          targetMetrics[`${uName}::${id}`] = e.metrics;
+        });
+      });
+    } else if (selectedAnnotator === 'current' || selectedAnnotator === (userName || 'User')) {
+      targetAnnotations = annotations;
+      targetMetrics = annotationMetrics;
+    } else if (importedAnnotations[selectedAnnotator]) {
+      const set = importedAnnotations[selectedAnnotator] as Record<string, any>;
+      Object.entries(set).forEach(([id, entry]) => {
+        const e = entry as { labels: number[], metrics: any };
+        targetAnnotations[id] = e.labels;
+        targetMetrics[id] = e.metrics;
+      });
+    }
+
+    if (Object.keys(targetAnnotations).length === 0) {
       setSessionStats(null);
       return;
     }
 
     // 1. Label Distribution
     const counts: Record<number, number> = {};
-    Object.values(annotations).flat().forEach(id => {
-      counts[id] = (counts[id] || 0) + 1;
+    const breakdowns: Record<number, Record<string, number>> = {};
+    
+    Object.entries(targetAnnotations).forEach(([key, labels]) => {
+      let annotator = selectedAnnotator === 'current' ? 'Current' : selectedAnnotator;
+      if (key.includes('::')) {
+        annotator = key.split('::')[0];
+      }
+      
+      (labels as number[]).forEach((id: number) => {
+        counts[id] = (counts[id] || 0) + 1;
+        if (!breakdowns[id]) breakdowns[id] = {};
+        breakdowns[id][annotator] = (breakdowns[id][annotator] || 0) + 1;
+      });
     });
 
-    const distribution = localCategories.map(cat => ({
-      name: cat.name,
-      count: counts[cat.id] || 0,
-      color: cat.hex || '#6366f1'
-    })).filter(d => d.count > 0);
+    // Add Ground Truth to distribution if available
+    if (groundTruth) {
+      groundTruth.forEach(row => {
+        localCategories.forEach(cat => {
+          let gtValue = row[cat.key];
+          if (gtValue === undefined) {
+             const keys = Object.keys(row);
+             const match = keys.find(k => k.toLowerCase() === cat.key.toLowerCase() || k.toLowerCase() === cat.name.toLowerCase() || k === formatHeader(cat.name));
+             if (match) gtValue = row[match];
+          }
+          const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
+          
+          if (isPresentInGT) {
+            counts[cat.id] = (counts[cat.id] || 0) + 1;
+            if (!breakdowns[cat.id]) breakdowns[cat.id] = {};
+            breakdowns[cat.id]['Ground Truth'] = (breakdowns[cat.id]['Ground Truth'] || 0) + 1;
+          }
+        });
+      });
+    }
+
+    const distribution = localCategories.map(cat => {
+      const data: any = {
+        name: cat.name,
+        count: counts[cat.id] || 0,
+        color: cat.accent || '#6366f1',
+      };
+      
+      if (breakdowns[cat.id]) {
+        Object.assign(data, breakdowns[cat.id]);
+        
+        // Match specific keys used in individual mode UI
+        if (selectedAnnotator !== 'overall' && groundTruth) {
+          data.gt = breakdowns[cat.id]['Ground Truth'] || 0;
+          const userKey = selectedAnnotator === 'current' ? 'Current' : selectedAnnotator;
+          data.user = breakdowns[cat.id][userKey] || 0;
+        }
+      }
+      
+      return data;
+    }).filter(d => d.count > 0);
 
     // 2. Speed Timeline
-    const speedTimeline = Object.entries(annotationMetrics)
-      .sort((a, b) => Number(a[0]) - Number(b[0]))
-      .map(([idx, m]) => ({
-        name: `Img ${idx}`,
-        duration: m.duration
-      }));
+    let speedTimeline: any[] = [];
+    let annotatorList: string[] = [];
+
+    if (selectedAnnotator === 'overall') {
+      const byId: Record<string, any> = {};
+      const allUsers = new Set<string>();
+      
+      // Get users from annotations primarily
+      Object.keys(targetAnnotations).forEach(key => {
+        if (key.includes('::')) {
+          allUsers.add(key.split('::')[0]);
+        }
+      });
+
+      Object.entries(targetMetrics).forEach(([key, m]) => {
+        const [user, id] = key.split('::');
+        allUsers.add(user);
+        if (!byId[id]) byId[id] = { name: id.startsWith('__file_') ? id.replace('__file_', '') : `#${id}`, rawId: id };
+        byId[id][user] = m.duration || 0;
+      });
+
+      annotatorList = Array.from(allUsers);
+      speedTimeline = Object.values(byId).sort((a, b) => {
+        const matchA = a.rawId.match(/\d+/);
+        const matchB = b.rawId.match(/\d+/);
+        const numA = matchA ? parseInt(matchA[0]) : 0;
+        const numB = matchB ? parseInt(matchB[0]) : 0;
+        return numA - numB;
+      });
+    } else {
+      annotatorList = [selectedAnnotator];
+      speedTimeline = Object.entries(targetMetrics)
+        .sort((a, b) => {
+          const matchA = a[0].match(/\d+/);
+          const matchB = b[0].match(/\d+/);
+          const numA = matchA ? parseInt(matchA[0]) : 0;
+          const numB = matchB ? parseInt(matchB[0]) : 0;
+          return numA - numB;
+        })
+        .map(([idx, m]: [string, any]) => ({
+          name: idx.startsWith('__file_') ? idx.replace('__file_', '') : `Img ${idx}`,
+          duration: m.duration || 0
+        }));
+    }
 
     // 3. Efficiency
-    const durations = Object.values(annotationMetrics).map(m => m.duration);
+    const durations = Object.values(targetMetrics).map((m: any) => m.duration || 0);
     const totalTime = durations.reduce((a, b) => a + b, 0);
     const avgTime = durations.length > 0 ? totalTime / durations.length : 0;
-    const totalLabels = Object.values(annotations).flat().length;
+    const totalLabels = Object.values(targetAnnotations).flat().length;
     const labelsPerMinute = totalTime > 0 ? (totalLabels / totalTime) * 60 : 0;
+
+    // 3.1 Unique Images
+    const uniqueImages = new Set<string>();
+    Object.keys(targetAnnotations).forEach(key => {
+      if (key.includes('::')) {
+        uniqueImages.add(key.split('::')[1]);
+      } else {
+        uniqueImages.add(key);
+      }
+    });
+
+    // 4. Recent Activity
+    let recentActivity: any[] = [];
+    if (selectedAnnotator === 'overall') {
+      const byId: Record<string, any> = {};
+      
+      Object.entries(targetAnnotations).forEach(([key, labels]) => {
+        const [user, id] = key.split('::');
+        if (!byId[id]) {
+          byId[id] = { 
+            id, 
+            labels: [], 
+            duration: 0, 
+            userLabels: {},
+            userDurations: {},
+            gtLabels: [],
+            allDurations: [],
+            isMatch: true // Assume match until proven otherwise
+          };
+        }
+        byId[id].userLabels[user] = labels;
+        const dur = targetMetrics[key]?.duration || 0;
+        byId[id].userDurations[user] = dur;
+        byId[id].allDurations.push(dur);
+        
+        // For fallback
+        byId[id].labels = labels; 
+      });
+
+      Object.values(byId).forEach((item: any) => {
+        if (item.allDurations && item.allDurations.length > 0) {
+          item.duration = item.allDurations.reduce((a: number, b: number) => a + b, 0) / item.allDurations.length;
+        }
+      });
+
+      // Add Ground Truth to each image in overall view
+      if (groundTruth) {
+        groundTruth.forEach(row => {
+          const filename = String(row.filename || '').trim();
+          if (!filename) return;
+          const baseName = filename.split(/[/\\]/).pop() || filename;
+          const id = `__file_${baseName}`;
+          
+          const gtLabels: number[] = [];
+          localCategories.forEach(cat => {
+            let gtValue = row[cat.key];
+            if (gtValue === undefined) {
+               const keys = Object.keys(row);
+               const match = keys.find(k => k.toLowerCase() === cat.key.toLowerCase() || k.toLowerCase() === cat.name.toLowerCase() || k === formatHeader(cat.name));
+               if (match) gtValue = row[match];
+            }
+            const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
+            if (isPresentInGT) gtLabels.push(cat.id);
+          });
+
+          if (byId[id]) {
+            byId[id].gtLabels = gtLabels;
+            
+            // Check matches for overall view: ALL users must match GT
+            const users = Object.keys(byId[id].userLabels);
+            const sortedGT = [...gtLabels].sort((a,b) => a-b).join(',');
+            let allMatch = users.length > 0;
+            users.forEach(u => {
+              const sortedUser = [...(byId[id].userLabels[u] || [])].sort((a,b) => a-b).join(',');
+              if (sortedUser !== sortedGT) allMatch = false;
+            });
+            byId[id].isMatch = allMatch;
+          }
+        });
+      }
+
+      recentActivity = Object.values(byId)
+        .sort((a, b) => {
+          const getSortVal = (id: string) => {
+            const match = id.match(/\d+/);
+            return match ? parseInt(match[0]) : 0;
+          };
+          return getSortVal(b.id) - getSortVal(a.id);
+        })
+        .slice(0, 100);
+    } else {
+      recentActivity = Object.entries(targetAnnotations)
+        .sort((a, b) => {
+          const getSortVal = (s: string) => {
+            const match = s.match(/\d+/);
+            return match ? parseInt(match[0]) : 0;
+          };
+          return getSortVal(b[0]) - getSortVal(a[0]);
+        })
+        .slice(0, 50)
+        .map(([id, labels]) => {
+          const result: any = {
+            id,
+            labels: labels as number[],
+            duration: targetMetrics[id]?.duration || 0,
+            gtLabels: [],
+            isMatch: false
+          };
+
+          // Find GT for this specific user's view
+          if (groundTruth) {
+            const baseName = id.startsWith('__file_') ? id.replace('__file_', '') : id;
+            const row = groundTruth.find(r => {
+              const fname = String(r.filename || '').trim();
+              const rBase = fname.split(/[/\\]/).pop() || fname;
+              return rBase === baseName;
+            });
+
+            if (row) {
+              const gtLabels: number[] = [];
+              localCategories.forEach(cat => {
+                let val = row[cat.key];
+                if (val === undefined) {
+                  const keys = Object.keys(row);
+                  const match = keys.find(k => k.toLowerCase() === cat.key.toLowerCase() || k.toLowerCase() === cat.name.toLowerCase() || k === formatHeader(cat.name));
+                  if (match) val = row[match];
+                }
+                if (val === '1' || val === 1 || String(val).toLowerCase() === 'true') gtLabels.push(cat.id);
+              });
+              result.gtLabels = gtLabels;
+              const sortedUser = [...(labels as number[])].sort((a,b) => a-b).join(',');
+              const sortedGT = [...gtLabels].sort((a,b) => a-b).join(',');
+              result.isMatch = sortedUser === sortedGT;
+            }
+          }
+
+          return result;
+        });
+    }
 
     setSessionStats({
       distribution,
       speedTimeline,
+      recentActivity,
+      annotators: groundTruth ? ['Ground Truth', ...annotatorList] : annotatorList,
+      imageCount: uniqueImages.size,
+      totalLabels,
       efficiency: {
         avgTime,
         totalTime,
         labelsPerMinute
       }
     });
-  }, [annotations, annotationMetrics, localCategories]);
-  const [importedAnnotations, setImportedAnnotations] = useState<Record<string, Record<number, number[]>>>({});
+  }, [annotations, annotationMetrics, importedAnnotations, selectedAnnotator, localCategories, groundTruth]);
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -690,7 +981,7 @@ export default function App() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newImportedAnnots: Record<string, Record<number, number[]>> = { ...importedAnnotations };
+    const newImportedAnnots: Record<string, Record<string, { labels: number[], metrics: any }>> = { ...importedAnnotations };
 
     for (const file of Array.from(files) as File[]) {
       const text = await file.text();
@@ -712,11 +1003,16 @@ export default function App() {
           skipEmptyLines: true,
           comments: '#',
           complete: (results) => {
-            const annotationMap: Record<number, number[]> = {};
+            const annotationMap: Record<string, { labels: number[], metrics: any }> = {};
             const headers = results.meta.fields || [];
             
             // Create a mapping from CSV column name to local category ID
             const csvToLocalIdMap: Record<string, number> = {};
+            const timeHeaders = {
+              start: headers.find(h => ['StartTime', 'start_time', 'start'].includes(h)),
+              end: headers.find(h => ['EndTime', 'end_time', 'end'].includes(h)),
+              duration: headers.find(h => ['DurationSeconds', 'duration_seconds', 'duration', 'time_taken'].includes(h))
+            };
             
             localCategories.forEach(cat => {
               // Priority 1: Match by ID/Key from metadata if available
@@ -740,7 +1036,7 @@ export default function App() {
                 }
                 // Priority 4: Display name match
                 else {
-                  const foundLabel = headers.find(h => h.toLowerCase() === cat.name.toLowerCase());
+                  const foundLabel = headers.find(h => h.toLowerCase() === cat.name.toLowerCase() || h === formatHeader(cat.name));
                   if (foundLabel) {
                     csvToLocalIdMap[foundLabel] = cat.id;
                   }
@@ -749,7 +1045,6 @@ export default function App() {
             });
 
             results.data.forEach((row: any, idx: number) => {
-              const fileIdx = idx + 1;
               const labels: number[] = [];
               
               // Use our robust mapping to gather labels
@@ -760,15 +1055,37 @@ export default function App() {
                 }
               });
               
-              annotationMap[fileIdx] = labels;
-              
+              const metrics = {
+                start: timeHeaders.start ? row[timeHeaders.start] : '',
+                end: timeHeaders.end ? row[timeHeaders.end] : '',
+                duration: timeHeaders.duration ? parseFloat(row[timeHeaders.duration]) || 0 : 0
+              };
+
+              let key: string;
               if (row.filename) {
-                 const baseName = String(row.filename).split(/[/\\]/).pop() || String(row.filename);
-                 (annotationMap as any)[`__file_${baseName}`] = labels;
+                const baseName = String(row.filename).split(/[/\\]/).pop() || String(row.filename);
+                key = `__file_${baseName}`;
+              } else {
+                key = String(idx + 1);
               }
+
+              annotationMap[key] = { labels, metrics };
             });
 
-            newImportedAnnots[file.name] = annotationMap;
+            // Try to find the annotator name from the CSV itself
+            const annotatorHeader = headers.find(h => 
+              ['Annotator', 'annotator', 'User', 'user', 'Name', 'name', 'UserName', 'username', 'AnnotatorName'].includes(h)
+            );
+            
+            let finalAnnotatorName = file.name;
+            if (annotatorHeader && results.data.length > 0) {
+              const firstRow = results.data[0] as any;
+              if (firstRow[annotatorHeader] && String(firstRow[annotatorHeader]).trim()) {
+                finalAnnotatorName = String(firstRow[annotatorHeader]).trim();
+              }
+            }
+
+            newImportedAnnots[finalAnnotatorName] = annotationMap;
             resolve();
           }
         });
@@ -776,27 +1093,86 @@ export default function App() {
     }
 
     setImportedAnnotations(newImportedAnnots);
+    setSelectedAnnotator('overall');
+  };
+
+  const handleRemoveAnnotator = (name: string) => {
+    const next = { ...importedAnnotations };
+    delete next[name];
+    setImportedAnnotations(next);
+    if (selectedAnnotator === name) {
+      setSelectedAnnotator('overall');
+    }
+  };
+
+  const exportAnalyticsResults = () => {
+    if (!sessionStats && !metricsResults) return;
+
+    // Build a complete mapping of all annotations for the export
+    const allAnnotations: Record<string, Record<string, { labels: number[], metrics: any }>> = {};
+    
+    // Add local user
+    const localUser = userName || 'User';
+    allAnnotations[localUser] = {};
+    Object.entries(annotations).forEach(([id, labels]) => {
+      allAnnotations[localUser][id] = { labels: labels as number[], metrics: (annotationMetrics as Record<string, any>)[id] };
+    });
+
+    // Add imported users
+    Object.entries(importedAnnotations).forEach(([name, data]) => {
+      allAnnotations[name] = data as Record<string, { labels: number[], metrics: any }>;
+    });
+
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      dataset: datasetPath,
+      sessionStats,
+      metricsResults,
+      rawAnnotations: allAnnotations,
+      categories: localCategories.map(c => ({ id: c.id, name: c.name, key: c.key }))
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `analytics_export_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   useEffect(() => {
-    if (groundTruth) {
-      calculateStats(groundTruth);
-    }
+    calculateStats(groundTruth);
   }, [annotations, groundTruth, importedAnnotations]);
 
-   const calculateStats = (gtData: any[]) => {
-    const setsToEvaluate: Record<number, number[]>[] = [];
+  const calculateStats = (gtData: any[] | null) => {
+    const setsToEvaluate: { name: string, data: Record<string, { labels: number[], metrics: any }> }[] = [];
     
-    if (Object.keys(importedAnnotations).length > 0) {
-      Object.values(importedAnnotations).forEach(set => setsToEvaluate.push(set as Record<number, number[]>));
-    } else {
-      setsToEvaluate.push(annotations);
+    // Add local user
+    const localAnnotations: Record<string, { labels: number[], metrics: any }> = {};
+    Object.entries(annotations).forEach(([id, labels]) => {
+      localAnnotations[id] = { labels: labels as number[], metrics: (annotationMetrics as Record<string, any>)[id] };
+    });
+    
+    if (Object.keys(localAnnotations).length > 0) {
+      setsToEvaluate.push({ name: userName || 'User', data: localAnnotations });
     }
 
-    if (setsToEvaluate.length === 0) return;
+    // Add all imported sessions
+    Object.entries(importedAnnotations).forEach(([name, set]) => {
+      setsToEvaluate.push({ name, data: set as any });
+    });
+
+    if (setsToEvaluate.length === 0) {
+      setMetricsResults(null);
+      setSessionStats(null);
+      return;
+    }
 
     let aggregateAccuracy = 0;
     let totalValidatedSamples = 0;
+    const userSpeeds: { name: string, avgTime: number, totalTime: number }[] = [];
 
     const aggregateClassStats = localCategories.reduce((acc: any, cat: any) => {
       acc[cat.key] = { tp: 0, fp: 0, fn: 0, tn: 0 };
@@ -816,83 +1192,104 @@ export default function App() {
       });
     });
 
-    setsToEvaluate.forEach(targetAnnotations => {
+    setsToEvaluate.forEach(setInfo => {
+      const targetAnnotations = setInfo.data;
       let totalCorrect = 0;
       let totalSamples = 0;
+      let userTotalTime = 0;
+      let userTimedImages = 0;
 
       const annotationMap: Record<string, number[]> = {};
-      Object.entries(targetAnnotations).forEach(([idx, ids]) => {
+      Object.entries(targetAnnotations).forEach(([idx, entry]) => {
+        const labels = entry.labels;
+        const metrics = entry.metrics;
+        
+        if (metrics?.duration) {
+          userTotalTime += metrics.duration;
+          userTimedImages++;
+        }
+
         if (idx.startsWith('__file_')) {
-          annotationMap[idx.replace('__file_', '')] = ids as number[];
+          annotationMap[idx.replace('__file_', '')] = labels;
         } else {
           const file = imageFiles[parseInt(idx) - 1] as File | undefined;
           if (file) {
             const baseName = file.name.split(/[/\\]/).pop() || file.name;
-            annotationMap[baseName] = ids as number[];
+            annotationMap[baseName] = labels;
           }
         }
       });
-
-      gtData.forEach(row => {
-        const filename = String(row.filename || '').trim();
-        if (!filename) return;
-
-        const baseFilename = filename.split(/[/\\]/).pop() || filename;
-        const userLabels = annotationMap[baseFilename] || annotationMap[filename] || [];
-        totalSamples++;
-        totalValidatedSamples++;
-
-        // Track user distribution
-        userLabels.forEach(id => {
-          const cat = localCategories.find(c => c.id === id);
-          if (cat) userCounts[cat.name] = (userCounts[cat.name] || 0) + 1;
+      
+      if (userTimedImages > 0) {
+        userSpeeds.push({
+          name: setInfo.name,
+          avgTime: userTotalTime / userTimedImages,
+          totalTime: userTotalTime
         });
+      }
 
-        // Track co-occurrence
-        userLabels.forEach(id1 => {
-          const c1 = localCategories.find(c => c.id === id1);
-          if (!c1) return;
-          userLabels.forEach(id2 => {
-            const c2 = localCategories.find(c => c.id === id2);
-            if (!c2) return;
-            coOccur[c1.name][c2.name]++;
+      if (gtData) {
+        gtData.forEach(row => {
+          const filename = String(row.filename || '').trim();
+          if (!filename) return;
+
+          const baseFilename = filename.split(/[/\\]/).pop() || filename;
+          const userLabels = annotationMap[baseFilename] || annotationMap[filename] || [];
+          totalSamples++;
+          totalValidatedSamples++;
+
+          // Track user distribution
+          userLabels.forEach(id => {
+            const cat = localCategories.find(c => c.id === id);
+            if (cat) userCounts[cat.name] = (userCounts[cat.name] || 0) + 1;
           });
+
+          // Track co-occurrence
+          userLabels.forEach(id1 => {
+            const c1 = localCategories.find(c => c.id === id1);
+            if (!c1) return;
+            userLabels.forEach(id2 => {
+              const c2 = localCategories.find(c => c.id === id2);
+              if (!c2) return;
+              coOccur[c1.name][c2.name]++;
+            });
+          });
+
+          let isImageCorrect = true;
+          localCategories.forEach(cat => {
+            const isSelectedByUser = userLabels.includes(cat.id);
+            
+            let gtValue = row[cat.key];
+            if (gtValue === undefined) {
+               const keys = Object.keys(row);
+               const match = keys.find(k => k.toLowerCase() === cat.key.toLowerCase() || k.toLowerCase() === cat.name.toLowerCase() || k === formatHeader(cat.name));
+               if (match) gtValue = row[match];
+            }
+            
+            const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
+
+            if (isPresentInGT) {
+              gtCounts[cat.name] = (gtCounts[cat.name] || 0) + 1;
+            }
+
+            if (isSelectedByUser && isPresentInGT) {
+              aggregateClassStats[cat.key].tp++;
+            } else if (isSelectedByUser && !isPresentInGT) {
+              aggregateClassStats[cat.key].fp++;
+              isImageCorrect = false;
+            } else if (!isSelectedByUser && isPresentInGT) {
+              aggregateClassStats[cat.key].fn++;
+              isImageCorrect = false;
+            } else {
+              aggregateClassStats[cat.key].tn++;
+            }
+          });
+
+          if (isImageCorrect) totalCorrect++;
         });
 
-        let isImageCorrect = true;
-        localCategories.forEach(cat => {
-          const isSelectedByUser = userLabels.includes(cat.id);
-          
-          let gtValue = row[cat.key];
-          if (gtValue === undefined) {
-             const keys = Object.keys(row);
-             const match = keys.find(k => k.toLowerCase() === cat.key.toLowerCase() || k.toLowerCase() === cat.name.toLowerCase());
-             if (match) gtValue = row[match];
-          }
-          
-          const isPresentInGT = gtValue === '1' || gtValue === 1 || String(gtValue).toLowerCase() === 'true';
-
-          if (isPresentInGT) {
-            gtCounts[cat.name] = (gtCounts[cat.name] || 0) + 1;
-          }
-
-          if (isSelectedByUser && isPresentInGT) {
-            aggregateClassStats[cat.key].tp++;
-          } else if (isSelectedByUser && !isPresentInGT) {
-            aggregateClassStats[cat.key].fp++;
-            isImageCorrect = false;
-          } else if (!isSelectedByUser && isPresentInGT) {
-            aggregateClassStats[cat.key].fn++;
-            isImageCorrect = false;
-          } else {
-            aggregateClassStats[cat.key].tn++;
-          }
-        });
-
-        if (isImageCorrect) totalCorrect++;
-      });
-
-      aggregateAccuracy += (totalSamples === 0 ? 0 : totalCorrect / totalSamples);
+        aggregateAccuracy += (totalSamples === 0 ? 0 : totalCorrect / totalSamples);
+      }
     });
 
     const categoryMetrics = localCategories.map((cat: any) => {
@@ -909,8 +1306,8 @@ export default function App() {
       };
     });
 
-    const meanAccuracy = aggregateAccuracy / setsToEvaluate.length;
-    const meanF1 = categoryMetrics.reduce((acc, curr) => acc + curr.f1, 0) / categoryMetrics.length;
+    const meanAccuracy = (gtData && setsToEvaluate.length > 0) ? aggregateAccuracy / setsToEvaluate.length : 0;
+    const meanF1 = (gtData && categoryMetrics.length > 0) ? categoryMetrics.reduce((acc, curr) => acc + curr.f1, 0) / categoryMetrics.length : 0;
 
     // Prepare chart data
     const distributionUser = localCategories.map(cat => ({
@@ -932,11 +1329,12 @@ export default function App() {
       accuracy: meanAccuracy,
       meanF1,
       categoryMetrics,
-      totalSamples: totalValidatedSamples / setsToEvaluate.length,
+      totalSamples: gtData ? totalValidatedSamples / setsToEvaluate.length : 0,
       userCount: setsToEvaluate.length,
       distributionGT,
       distributionUser,
-      coOccurrence
+      coOccurrence,
+      userSpeeds
     });
   };
 
@@ -1198,18 +1596,15 @@ export default function App() {
   };
 
   const downloadCSV = () => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+    const timestamp = new Date().toISOString().replace(/[:.-]/g, '_').slice(0, 16);
     const safeUserName = (userName || 'anonymous').replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const filename = `annotations_${safeUserName}_${timestamp}.csv`;
     
       // Add a hidden metadata row for robust importing if categories change
-      const catMetadata = localCategories.map(c => ({ id: c.id, key: c.key, name: c.name }));
-      const metadataRow = `#categories:${JSON.stringify(catMetadata)}`;
-
       // Header matches Truth: filename,projected_slides,computer_screen,printed_papers,whiteboard,map,wargaming
-      // We add StartTime, EndTime, DurationSeconds for analysis
-      const headers = ['filename', ...localCategories.map(c => c.key), 'StartTime', 'EndTime', 'DurationSeconds'];
-      let csvContent = metadataRow + '\n' + headers.join(',') + '\n';
+      // We add StartTime, EndTime, DurationSeconds and Annotator for analysis
+      const headers = ['filename', ...localCategories.map(c => formatHeader(c.name)), 'StartTime', 'EndTime', 'DurationSeconds', 'Annotator'];
+      let csvContent = headers.join(',') + '\n';
   
       Object.entries(annotations).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([id, ids]) => {
         const index = Number(id);
@@ -1245,6 +1640,7 @@ export default function App() {
       rowData.push(startTime);
       rowData.push(finalEndTime);
       rowData.push(totalDuration.toFixed(3));
+      rowData.push(`"${(userName || 'Anonymous').replace(/"/g, '""')}"`);
 
       csvContent += rowData.join(',') + '\n';
     });
@@ -1363,7 +1759,20 @@ export default function App() {
                       <ChevronLeft size={16} />
                       Back to Labeling
                     </button>
-                    <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
+                    <div className="flex flex-col sm:flex-row gap-3 md:gap-4 items-end sm:items-center">
+                      <button 
+                        onClick={exportAnalyticsResults}
+                        className="bg-emerald-50 p-3 md:p-4 pl-4 md:pl-6 rounded-2xl md:rounded-3xl border border-emerald-200 flex items-center justify-between md:justify-start gap-4 hover:bg-emerald-100 transition-all active:scale-95 group"
+                      >
+                        <div className="flex flex-col text-left">
+                          <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600">Export Results</span>
+                          <span className="text-[9px] md:text-[10px] font-bold text-on-surface-variant opacity-60">DOWNLOAD JSON</span>
+                        </div>
+                        <div className="p-2 bg-white rounded-xl shadow-sm text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                          <Save className="w-[18px] h-[18px] md:w-[20px] md:h-[20px]" />
+                        </div>
+                      </button>
+
                       <button 
                         onClick={() => csvInputRef.current?.click()}
                         className="bg-primary/5 p-3 md:p-4 pl-4 md:pl-6 rounded-2xl md:rounded-3xl border border-primary/10 flex items-center justify-between md:justify-start gap-4 hover:bg-primary/10 transition-all active:scale-95 group"
@@ -1400,12 +1809,78 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="space-y-1 md:space-y-2">
-                    <h2 className="text-xl md:text-3xl font-black tracking-tight text-on-surface uppercase leading-none">Insights & Analytics</h2>
-                    <p className="text-on-surface-variant text-xs md:text-sm opacity-60">
-                      {metricsResults ? 'Validation results against ground truth dataset' : 'Live labeling velocity and distribution'}
-                    </p>
+                  <div className="space-y-4">
+                    <div className="space-y-1 md:space-y-2">
+                      <h2 className="text-xl md:text-3xl font-black tracking-tight text-on-surface uppercase leading-none">Insights & Analytics</h2>
+                      <p className="text-on-surface-variant text-xs md:text-sm opacity-60">
+                        {metricsResults ? 'Validation results against ground truth dataset' : 'Live labeling velocity and distribution'}
+                      </p>
+                    </div>
+
+                    {Object.keys(importedAnnotations).length > 0 && (
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        <button
+                          onClick={() => setSelectedAnnotator('overall')}
+                          className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${selectedAnnotator === 'overall' ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white text-on-surface-variant border-outline-variant hover:border-primary/30'}`}
+                        >
+                          Overall View
+                        </button>
+                        {Object.keys(importedAnnotations).map(name => (
+                          <div key={name} className="flex items-center">
+                            <button
+                              onClick={() => setSelectedAnnotator(name)}
+                              className={`pl-4 pr-2 py-2 rounded-l-full text-[10px] font-black uppercase tracking-widest transition-all border border-r-0 ${selectedAnnotator === name ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white text-on-surface-variant border-outline-variant hover:border-primary/30'}`}
+                            >
+                              {name}
+                            </button>
+                            <button
+                              onClick={() => handleRemoveAnnotator(name)}
+                              className={`pr-3 pl-1 py-2 rounded-r-full text-[10px] transition-all border border-l-0 ${selectedAnnotator === name ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white text-on-surface-variant border-outline-variant hover:border-red-500 hover:text-red-500'}`}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+
+                  {/* Comparative Performance Section */}
+                  {metricsResults?.userSpeeds && metricsResults.userSpeeds.length > 0 && (
+                    <div className="bg-white p-6 md:p-8 rounded-[40px] border border-outline-variant shadow-sm space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-bold uppercase tracking-widest text-xs flex items-center gap-2">
+                          <Users size={14} className="text-primary" />
+                          Comparative Performance
+                        </h3>
+                        <span className="text-[10px] font-bold text-on-surface-variant opacity-40 uppercase tracking-widest">
+                          {metricsResults.userSpeeds.length} Users Loaded
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {metricsResults.userSpeeds.map((u, i) => (
+                          <div key={i} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-xs font-black border border-slate-200">
+                                {u.name.charAt(0).toUpperCase()}
+                              </div>
+                              <span className="text-sm font-bold text-on-surface truncate">{u.name}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200/50">
+                              <div className="flex flex-col">
+                                <span className="text-[8px] font-black uppercase text-on-surface-variant opacity-40">Avg Time</span>
+                                <span className="text-lg font-black text-primary">{u.avgTime.toFixed(1)}s</span>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-[8px] font-black uppercase text-on-surface-variant opacity-40">Total Time</span>
+                                <span className="text-lg font-black text-on-surface">{(u.totalTime / 60).toFixed(1)}m</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Session Overview (Visible even without metricsResults) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
@@ -1453,7 +1928,7 @@ export default function App() {
                         <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Images Labeled</span>
                       </div>
                       <span className="text-3xl md:text-4xl font-black tracking-tighter text-on-surface">
-                        {Object.keys(annotations).length}
+                        {sessionStats?.imageCount || 0}
                       </span>
                     </div>
                   </div>
@@ -1467,13 +1942,7 @@ export default function App() {
                       </h3>
                       <div className="flex-1 min-h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={sessionStats?.speedTimeline || []} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                            <defs>
-                              <linearGradient id="colorDur" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
-                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                              </linearGradient>
-                            </defs>
+                          <LineChart data={sessionStats?.speedTimeline || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
                             <XAxis 
                               dataKey="name" 
@@ -1491,17 +1960,34 @@ export default function App() {
                               contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: 'bold' }}
                               cursor={{ stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '4 4' }}
                             />
-                            <Area 
-                              type="monotone" 
-                              dataKey="duration" 
-                              stroke="#6366f1" 
-                              strokeWidth={3}
-                              fillOpacity={1} 
-                              fill="url(#colorDur)" 
-                              animationDuration={1500}
-                              name="Seconds"
-                            />
-                          </AreaChart>
+                            {selectedAnnotator === 'overall' && sessionStats?.annotators ? (
+                              <>
+                                <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }} />
+                                {sessionStats.annotators.filter(u => u !== 'Ground Truth').map((user, idx) => (
+                                  <Line 
+                                    key={user}
+                                    type="monotone"
+                                    dataKey={user}
+                                    stroke={THEME_COLORS[idx % THEME_COLORS.length].accent}
+                                    strokeWidth={3}
+                                    dot={false}
+                                    animationDuration={1500}
+                                    name={user}
+                                  />
+                                ))}
+                              </>
+                            ) : (
+                              <Line 
+                                type="monotone" 
+                                dataKey="duration" 
+                                stroke="#6366f1" 
+                                strokeWidth={3}
+                                dot={false}
+                                animationDuration={1500}
+                                name="Seconds"
+                              />
+                            )}
+                          </LineChart>
                         </ResponsiveContainer>
                       </div>
                     </div>
@@ -1515,14 +2001,7 @@ export default function App() {
                       <div className="flex-1 min-h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart 
-                            data={metricsResults ? 
-                              metricsResults.distributionUser?.map((d, i) => ({
-                                name: d.name,
-                                user: d.count,
-                                gt: metricsResults.distributionGT?.[i].count || 0
-                              })) : 
-                              sessionStats?.distribution 
-                            }
+                            data={sessionStats?.distribution}
                             layout="vertical"
                             margin={{ top: 0, right: 30, left: 40, bottom: 0 }}
                           >
@@ -1533,18 +2012,32 @@ export default function App() {
                               dataKey="name" 
                               axisLine={false} 
                               tickLine={false} 
-                              width={80}
+                              width={120}
                               tick={{ fontSize: 9, fontWeight: 800, fill: '#1e293b' }}
                             />
                             <Tooltip 
                               cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
                               contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: 'bold' }}
                             />
-                            {metricsResults ? (
+                            {selectedAnnotator !== 'overall' && (metricsResults || groundTruth) ? (
                               <>
                                 <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }} />
                                 <Bar dataKey="gt" name="Ground Truth" fill="#e2e8f0" radius={[0, 4, 4, 0]} barSize={12} />
-                                <Bar dataKey="user" name="Annotator" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={12} />
+                                <Bar dataKey="user" name={selectedAnnotator === 'current' ? 'Current User' : selectedAnnotator} fill="#6366f1" radius={[0, 4, 4, 0]} barSize={12} />
+                              </>
+                            ) : selectedAnnotator === 'overall' && sessionStats?.annotators ? (
+                              <>
+                                <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', paddingBottom: '20px' }} />
+                                {sessionStats.annotators.map((user, idx) => (
+                                  <Bar 
+                                    key={user} 
+                                    dataKey={user} 
+                                    name={user} 
+                                    fill={user === 'Ground Truth' ? '#94a3b8' : THEME_COLORS[idx % THEME_COLORS.length].accent} 
+                                    radius={idx === sessionStats.annotators.length - 1 ? [0, 4, 4, 0] : [0, 0, 0, 0]} 
+                                    barSize={20} 
+                                  />
+                                ))}
                               </>
                             ) : (
                               <Bar dataKey="count" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={24}>
@@ -1655,11 +2148,11 @@ export default function App() {
                           </div>
                         </div>
                         <div className="bg-white p-8 rounded-[32px] border border-outline-variant shadow-sm flex flex-col gap-1 hover:border-primary/30 transition-all">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Samples Validated</span>
-                          <span className="text-4xl font-black tracking-tighter text-on-surface">{metricsResults.totalSamples}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Unique Samples Validated</span>
+                          <span className="text-4xl font-black tracking-tighter text-on-surface">{sessionStats?.imageCount || metricsResults.totalSamples}</span>
                           <div className="mt-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
                             <CheckCircle2 size={10} className="text-emerald-500" />
-                            Images Matched
+                            Baseline set for tracking
                           </div>
                         </div>
                       </div>
@@ -1697,7 +2190,7 @@ export default function App() {
                                   key={cat.id} 
                                   dataKey={cat.name} 
                                   stackId="a" 
-                                  fill={cat.hex || THEME_COLORS[i % THEME_COLORS.length].hex} 
+                                  fill={cat.accent || THEME_COLORS[i % THEME_COLORS.length].accent} 
                                   opacity={0.8}
                                 />
                               ))}
@@ -1760,60 +2253,102 @@ export default function App() {
                       <table className="w-full text-left">
                         <thead className="sticky top-0 bg-white shadow-sm z-10 border-b border-outline-variant">
                           <tr>
-                            <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Image Index</th>
-                            <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Applied Labels</th>
-                            <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Processing Time</th>
+                            <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant min-w-[400px]">Image Index</th>
+                            {selectedAnnotator === 'overall' && sessionStats?.annotators ? (
+                              sessionStats.annotators.map(user => (
+                                <th key={user} className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant min-w-[150px]">{user}</th>
+                              ))
+                            ) : (
+                              <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant min-w-[150px]">Applied Labels</th>
+                            )}
+                            <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant min-w-[350px]">Processing Time</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-outline-variant">
-                          {Object.keys(annotations).length > 0 ? (
-                            Object.entries(annotations)
-                              .sort((a, b) => Number(b[0]) - Number(a[0]))
-                              .slice(0, 50)
-                              .map(([id, ids]) => {
-                                const idx = Number(id);
-                                const metrics = annotationMetrics[idx];
-                                return (
-                                  <tr key={id} className="hover:bg-background transition-colors">
-                                    <td className="px-8 py-4 text-xs font-black text-on-surface opacity-80 tabular-nums">
-                                      #{idx}
-                                    </td>
+                          {sessionStats?.recentActivity && sessionStats.recentActivity.length > 0 ? (
+                            sessionStats.recentActivity.map((entry) => {
+                              const labels = entry.labels;
+                              const duration = entry.duration;
+                              
+                              let displayId = '';
+                              if (entry.id.includes('::')) {
+                                const [user, rawId] = entry.id.split('::');
+                                const idPart = rawId.startsWith('__file_') ? rawId.replace('__file_', '') : `#${rawId}`;
+                                displayId = `${user}: ${idPart}`;
+                              } else {
+                                displayId = entry.id.startsWith('__file_') ? entry.id.replace('__file_', '') : `#${entry.id}`;
+                              }
+
+                              const renderLabels = (l: number[]) => (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {l.length > 0 && l[0] !== -1 ? l.map(catId => {
+                                    const cat = localCategories.find(c => c.id === catId);
+                                    return (
+                                      <span key={catId} className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border transition-all ${cat?.bg} ${cat?.color} ${cat?.border}`}>
+                                        {cat?.name}
+                                      </span>
+                                    );
+                                  }) : (
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-red-400 bg-red-50 border border-red-100 px-2 py-0.5 rounded-lg">
+                                      {-1 === l[0] ? 'No Label' : 'N/A'}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                              
+                              return (
+                                <tr key={entry.id} className="hover:bg-background transition-colors">
+                                  <td className="px-4 py-4 text-xs font-black text-on-surface opacity-80 tabular-nums break-all min-w-[400px]">
+                                    <div className="flex items-center gap-3">
+                                      {entry.isMatch && groundTruth && (
+                                        <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                                      )}
+                                      {displayId}
+                                    </div>
+                                  </td>
+                                  {selectedAnnotator === 'overall' && sessionStats?.annotators ? (
+                                    sessionStats.annotators.map(user => (
+                                      <td key={user} className="px-4 py-4">
+                                        {user === 'Ground Truth' ? renderLabels(entry.gtLabels || []) : renderLabels(entry.userLabels?.[user] || [])}
+                                      </td>
+                                    ))
+                                  ) : (
                                     <td className="px-8 py-4">
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {ids.length > 0 ? ids.map(catId => {
-                                          const cat = localCategories.find(c => c.id === catId);
-                                          return (
-                                            <span key={catId} className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border transition-all ${cat?.bg} ${cat?.color} ${cat?.border}`}>
-                                              {cat?.name}
-                                            </span>
-                                          );
-                                        }) : (
-                                          <span className="text-[9px] font-bold uppercase tracking-widest text-red-400 bg-red-50 border border-red-100 px-2 py-0.5 rounded-lg">
-                                            No Label
-                                          </span>
-                                        )}
-                                      </div>
+                                      {renderLabels(labels)}
                                     </td>
-                                    <td className="px-8 py-4">
+                                  )}
+                                  <td className="px-8 py-4 min-w-[350px]">
+                                    <div className="flex flex-col gap-1">
                                       <div className="flex items-center gap-2">
                                         <div className="w-16 h-1 bg-outline-variant/30 rounded-full overflow-hidden">
                                           <div 
                                             className="h-full bg-primary/60" 
-                                            style={{ width: `${Math.min(100, (metrics?.duration || 0) * 10)}%` }} 
+                                            style={{ width: `${Math.min(100, (duration || 0) * 10)}%` }} 
                                           />
                                         </div>
                                         <span className="text-[10px] font-bold tabular-nums text-on-surface-variant">
-                                          {(metrics?.duration || 0).toFixed(1)}s
+                                          {(duration || 0).toFixed(1)}s
+                                          {selectedAnnotator === 'overall' && <span className="ml-1 opacity-40 font-normal">avg</span>}
                                         </span>
                                       </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })
+                                      {selectedAnnotator === 'overall' && entry.userDurations && (
+                                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 opacity-60">
+                                          {Object.entries(entry.userDurations).map(([u, d]: [any, any]) => (
+                                            <span key={u} className="text-[8px] font-medium tabular-nums">
+                                              {u}: {d.toFixed(1)}s
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
                           ) : (
                             <tr>
                               <td colSpan={3} className="px-8 py-20 text-center text-on-surface-variant/40 text-xs font-bold uppercase tracking-widest">
-                                No activity recorded in this session
+                                No activity recorded in this view
                               </td>
                             </tr>
                           )}
@@ -1836,7 +2371,33 @@ export default function App() {
                   <header className="flex justify-between items-end">
                     <div>
                       <h2 className="text-4xl font-black tracking-tighter text-on-surface uppercase mb-3">Workspace Configuration</h2>
-                      <p className="text-on-surface-variant font-medium">Customize categories, labels, and visual tokens</p>
+                      <p className="text-on-surface-variant font-medium text-sm">Customize categories, labels, and visual tokens</p>
+                      
+                      {(() => {
+                        const headers = settingsDraft.map(c => formatHeader(c.name));
+                        const duplicates = headers.filter((item, index) => headers.indexOf(item) !== index);
+                        const hasDuplicateHeaders = duplicates.length > 0;
+                        
+                        if (hasDuplicateHeaders) {
+                          return (
+                            <motion.div 
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className="mt-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl flex items-center gap-3 text-orange-700"
+                            >
+                              <AlertCircle size={20} className="shrink-0" />
+                              <div className="flex flex-col">
+                                <span className="text-xs font-black uppercase tracking-widest leading-none mb-1">Export Conflict Detected</span>
+                                <span className="text-[11px] font-medium opacity-80 leading-relaxed">
+                                  Duplicate CSV headers: <strong className="font-black">{[...new Set(duplicates)].join(', ')}</strong>. 
+                                  Rename your labels to ensure unique outputs.
+                                </span>
+                              </div>
+                            </motion.div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     <div className="flex gap-4">
                       <button 
@@ -1894,6 +2455,8 @@ export default function App() {
                         <button 
                           onClick={() => {
                             const newId = Math.max(0, ...settingsDraft.map((c: any) => c.id)) + 1;
+                            const theme = THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)];
+                            const { name: _themeName, ...themeStyles } = theme;
                             setSettingsDraft([
                               ...settingsDraft,
                               {
@@ -1901,7 +2464,7 @@ export default function App() {
                                 key: `custom_${newId}`,
                                 name: 'New Category',
                                 desc: 'Brief description',
-                                ...THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)],
+                                ...themeStyles,
                                 icon: AVAILABLE_ICONS[0].icon
                               }
                             ]);
@@ -2367,18 +2930,23 @@ export default function App() {
                           }`}
                           style={selectedCategories.includes(cat.id) ? { boxShadow: `0 20px 25px -5px ${cat.accent}20, 0 8px 10px -6px ${cat.accent}20` } : {}}
                         >
-                          <div className="flex flex-col gap-1 md:gap-1.5">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <span className={`text-[9px] md:text-[10px] font-black w-4 h-4 rounded-md flex items-center justify-center transition-colors ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-outline-variant/10 text-on-surface-variant'}`}>
-                                {index + 1}
-                              </span>
-                              <span className={`text-[10px] md:text-[11px] font-bold uppercase tracking-widest truncate ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
-                                {cat.name}
+                          <div className="flex items-center gap-3 md:gap-5">
+                            <div className={`shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center transition-all ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border} shadow-inner` : 'bg-outline-variant/10 text-on-surface-variant/40'}`}>
+                              <cat.icon size={20} className="md:w-6 md:h-6" />
+                            </div>
+                            <div className="flex flex-col gap-1 md:gap-1.5 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className={`text-[9px] md:text-[10px] font-black w-4 h-4 rounded-md flex items-center justify-center transition-colors ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-outline-variant/10 text-on-surface-variant'}`}>
+                                  {index + 1}
+                                </span>
+                                <span className={`text-[10px] md:text-[11px] font-bold uppercase tracking-widest truncate ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
+                                  {cat.name}
+                                </span>
+                              </div>
+                              <span className={`text-sm md:text-base font-medium transition-colors leading-tight line-clamp-2 ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
+                                {cat.desc}
                               </span>
                             </div>
-                            <span className={`text-sm md:text-base font-medium transition-colors leading-tight line-clamp-2 ${selectedCategories.includes(cat.id) ? 'text-on-surface' : 'text-on-surface/60 group-hover:text-on-surface'}`}>
-                              {cat.desc}
-                            </span>
                           </div>
                           {selectedCategories.includes(cat.id) && (
                             <motion.div 
@@ -2494,7 +3062,7 @@ export default function App() {
                         className="w-full bg-background border border-outline-variant rounded-2xl px-5 py-4 focus:outline-none focus:ring-4 focus:ring-primary/5 focus:border-primary transition-all font-medium"
                       />
                     </div>
-                    
+
                     <button 
                       onClick={downloadCSV}
                       className="w-full bg-primary text-white py-4 rounded-full font-bold uppercase tracking-[0.15em] text-[11px] shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 transition-all flex items-center justify-center gap-3"
@@ -2744,22 +3312,25 @@ function MobileLabelingSheet({
                 <button
                   key={cat.id}
                   onClick={() => toggleCategory(cat.id)}
-                  className={`w-full text-left p-5 rounded-3xl border transition-all flex justify-between items-center ${
+                  className={`w-full text-left p-4 rounded-3xl border transition-all flex items-center gap-4 ${
                     selectedCategories.includes(cat.id) 
                       ? `${cat.bg} ${cat.border} ring-2 ${cat.ring} scale-[0.98]` 
                       : 'bg-background border-transparent'
                   }`}
                 >
-                  <div className="flex flex-col gap-0.5">
+                  <div className={`shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${selectedCategories.includes(cat.id) ? `${cat.bg} ${cat.color} border ${cat.border}` : 'bg-white border border-outline-variant/10 text-on-surface-variant/30'}`}>
+                    <cat.icon size={24} />
+                  </div>
+                  <div className="flex-1 flex flex-col gap-0.5 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] font-black w-4 h-4 rounded flex items-center justify-center ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant opacity-40'}`}>
                         {index + 1}
                       </span>
-                      <span className={`text-xs font-black uppercase tracking-widest ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
+                      <span className={`text-xs font-black uppercase tracking-widest truncate ${selectedCategories.includes(cat.id) ? cat.color : 'text-on-surface-variant'}`}>
                         {cat.name}
                       </span>
                     </div>
-                    <span className="text-sm font-medium">{cat.desc}</span>
+                    <span className="text-sm font-medium line-clamp-1">{cat.desc}</span>
                   </div>
                   {selectedCategories.includes(cat.id) && (
                     <CheckCircle2 size={24} className={cat.color} />
