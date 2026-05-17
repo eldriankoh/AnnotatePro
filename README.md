@@ -1,9 +1,9 @@
 # 🏷️ AnnotatePro: Precision Labeling Workspace
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.0-06B6D4?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
+[![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.1-06B6D4?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
+[![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 
 ![AnnotatePro Dashboard](public/screenshot.png)
 
@@ -39,6 +39,7 @@ AnnotatePro allows you to define a tailored extraction schema. By default, the s
 - 🗺️ **Map**: Cartographic references
 - 📝 **Whiteboard**: Marker-based surfaces
 - 📄 **Printed Paper**: Hardcopy physical documents
+- ⚔️ **Wargaming**: Tactical sandbox models
 
 The labeling interface is fully extensible via the **Workspace Settings**, allowing you to add, remove, or modify categories to fit your specific data needs.
 
@@ -49,7 +50,12 @@ The labeling interface is fully extensible via the **Workspace Settings**, allow
 
 ### 📊 Insight & Analytics
 ![Intelligence Dashboard](public/analytics_view.png)
-- **Intelligence Dashboard**: Real-time visualization of labeling performance, category distribution, and time-per-image metrics.
+
+- **Multi-Annotator Engine**: Import and aggregate labels from multiple users to identify consensus and edge cases.
+- **Ground Truth Validation**: Drop an "Official Labels" CSV to instantly calculate Accuracy and F1 scores against a baseline.
+- **Match Precision Tracking**: Real-time visual indicators (tick marks) in the activity log highlighting exact alignment with Ground Truth.
+- **Intelligence Dashboard**: Re-engineered visualization suite for comparing annotator distributions, labeling velocity, and class-level accuracy.
+- **Unique Sample Counting**: Precise tracking of unique images processed, ensuring metrics reflect dataset coverage rather than raw record counts.
 - **Expanded Workspace**: Optimized analytics layout (6xl width) providing maximum screen real estate for deep data inspection.
 - **Efficiency Feedback**: Instant calculation of labeling throughput (labels per minute) and dataset coverage.
 
@@ -111,19 +117,28 @@ The primary workspace featuring the Precision View Engine. It provides immediate
 ### 🏁 Session Completion
 ![Ending Screen](public/ending_screen.png)
 
-The final stage of the labeling workflow where users can review aggregate metrics, inspect their performance (labels/min), and download the finalized dataset.
+The final stage of the labeling workflow where users can review aggregate metrics, inspect their performance (labels/min), validate against Ground Truth, and download the finalized multi-user dataset.
+
+---
+
+## 📊 Analytics & Export Schema
+AnnotatePro's revamped export engine produces a high-fidelity JSON bundle containing:
+- **`rawAnnotations`**: A complete matrix of all labels and durations across every annotator in the session.
+- **`metricsResults`**: Global performance scores (Accuracy, F1) when validated against a ground truth baseline.
+- **`sessionStats`**: Detailed breakdown of labeling velocity and class distribution per user.
+- **`categories`**: The exact schema used during the extraction process.
 
 ---
 
 ## ⌨️ Keyboard Shortcuts
 Maximize efficiency with dedicated keyboard mappings:
-- `1-6`: Toggle corresponding label categories
+- `1-9`: Toggle corresponding label categories
 - `0`: Mark as **No Label** and proceed
-- `Enter`: **Apply Extraction** and move to next node
+- `Enter`: **Apply Extraction** and move to next image
 - `Space`: Toggle **Timer** (Start/Pause)
 - `Arrow Left/Right`: Navigate through dataset
 - `Shift + A`: Toggle **Analytics Dashboard**
-- `T`: Toggle **Theater Mode** (Zero-UI inspection)
+- `T`: Toggle **Theater Mode** (Focus mode)
 - `Z / X`: Zoom In / Out
 
 ---
@@ -131,8 +146,8 @@ Maximize efficiency with dedicated keyboard mappings:
 ## 🛠️ Technical Architecture
 
 ### Core Stack
-- **Frontend**: React 18 (Functional Component Architecture)
-- **Styling**: Tailwind CSS 4.0 (Design Tokens & Utility-First)
+- **Frontend**: React 19 (Functional Component Architecture)
+- **Styling**: Tailwind CSS 4.1 (Design Tokens & Utility-First)
 - **Animation**: Framer Motion (State-driven transitions)
 - **Data Visualization**: Recharts (High-performance charting)
 - **Icons**: Lucide React (Pixel-perfect vector set)
@@ -158,23 +173,22 @@ Maximize efficiency with dedicated keyboard mappings:
 3.  **Operation**
     - Click **"Got it, Let's Begin"** in the tutorial.
     - Revisit instructions anytime via the **Integrated Tutorial (i)** icon in the header.
-    - Set your **Dataset Path**.
-    - Select labels for each image and click **"Save & Next"**.
-    - Click **"Finish & Export"** when the session is complete.
+    - Set your **Dataset Path** by dragging in a folder or selecting one.
+    - Select labels for each image and click **"Save & Next"** (or use `Enter`).
+    - **Multi-User Collaboration**: Import other annotators' CSV files in the Analytics view to compare performance.
+    - **Validation**: Upload a Ground Truth CSV to generate Accuracy and F1 scores.
+    - Click **"Finish & Export"** when the session is complete to download the aggregated JSON.
 
 ---
 
 ## 📋 Changelog (Recent Updates)
 
-- **Elegant Layout Transitions**: Completely overhauled the transition logic between Workspace, Settings, and Metrics for a smoother, high-end feel.
-- **Drag & Drop Visibility**: Added explicit on-screen instructions for Drag & Drop support to improve accessibility for new users.
-- **Refined Action Sidebar**: Optimized the sidebar with a cleaner visual hierarchy and improved scrolling performance.
-- **Integrated Tutorial System**: Added a persistent 'i' icon in the header for anytime-access to onboarding instructions.
-- **Smart Timer Management**: The session timer now automatically pauses when the tutorial is open and resumes when closed, ensuring timing accuracy.
-- **Expanded Analytics View**: Removed sidebars in the analytics view to provide a 50% increase in usable space for data visualization.
-- **Dataset Feedback**: Enhanced the timer interface with a 'Disconnected' state and clear UX indicators when no image dataset is linked.
-- **Precision View Engine**: Smooth 8x zoom/pan integration for high-detail labeling tasks.
-- **Theater Mode**: Implemented a distraction-free viewing toggle for precision inspection.
+- **Multi-Annotator Workspace**: Revamped the analytics page to support simultaneous viewing and export of multiple annotator sessions.
+- **Ground Truth Baseline**: Integrated CSV-driven validation with real-time Accuracy and F1 calculation.
+- **Match Indicators**: Added visual consensus tracking in the Activity log via precision match tick marks.
+- **Aggregated Export**: Updated the JSON export schema to preserve all annotator data in a single unified file.
+- **Improved UX Consistency**: Optimized the transition logic between Workspace, Settings, and Metrics for a smoother, high-end feel.
+- **Smart Session Management**: Intelligent timer pauses and dataset feedback for a more reliable labeling experience.
 
 ---
 
